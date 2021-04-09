@@ -3,7 +3,7 @@ import cv2
 import glob
 from time import time
 from numba import jit
-from scipy import ndimage
+# from scipy import ndimage
 from math import sin, cos, sqrt, pi, radians
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
@@ -17,9 +17,15 @@ np.set_printoptions(suppress=True)
 
 def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
            colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth):
-    open_cv_image = ndimage.rotate(cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION), (ROLL * 180) / pi)
-    min_open_cv_image_size = min(open_cv_image.shape[0:2])
-    open_cv_image = open_cv_image[0:min_open_cv_image_size, 0:min_open_cv_image_size]
+    img = cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION)
+    min_open_cv_image_size = min(img.shape[0:2])
+    img = img[0:min_open_cv_image_size, 0:min_open_cv_image_size]
+    # get image height, width
+    (h, w) = img.shape[:2]
+    # open_cv_image = ndimage.rotate(img, (ROLL * 180) / pi)
+    img = cv2.warpAffine(img, cv2.getRotationMatrix2D((w / 2, h / 2), (ROLL * 180) / pi, 1.0), (w, h))
+    min_open_cv_image_size = min(img.shape[0:2])
+    open_cv_image = img[0:min_open_cv_image_size, 0:min_open_cv_image_size]
     open_cv_image = Image.fromarray(cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2RGB))
     pil_Image = open_cv_image.resize((sz, sz))
     pred = loaded_model.predict(data={'image': pil_Image})
@@ -166,17 +172,18 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         tic = time()
         KDE(particles_data, KDE_model, xGrid, yGrid)
         print('Time per KDE iteration:', (time() - tic))
+        # Visualize particles using red circle
         plt.imshow(imgOriginal, alpha=.7)
-        cv2.imshow("CameraLog", ndimage.rotate(cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION)[::4, ::4, ],
-                                               (ROLL * 180) / pi))
         for num, particle in enumerate(particles_data):
             cv2.circle(image_particles, tuple((particle[0].astype(int), particle[1].astype(int))), 1, (0, 0, 255), -1)
         cv2.imshow("WINDOW_NAME_PARTICLES", image_particles)
+        # Object detection using YOLO
         tic = time()
         object_detection = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
                                   colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth)
         print('Time per YOLOV2 iteration:', (time() - tic))
         cv2.imshow("CameraLog", object_detection)
+        # Waiting a little bit to show all windows
         if cv2.waitKey(1) & 0xFF == 27:
             break
         plt.pause(0.000001)
@@ -184,7 +191,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         particles_data[:, 1] = particles_data[:, 1] + V
 
         tic = time()
-        # Second step is to remove particles that go outside of the indoor space
+        # This step tries to remove particles that go outside of the indoor space
         FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
         particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
         old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
@@ -205,10 +212,10 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
 
 
 if __name__ == "__main__":
-    PATH = "./LoggedData/a2/"
+    PATH = "../LoggedData/a2/"
     IMAGE_EXTENSION = '.jpg'
-    path_to_map = './maps/walls_4.bmp'
-    model_name = '8NMMY2NC15t.mlmodel'
+    path_to_map = '../maps/walls_4.bmp'
+    model_name = '8NMMY2NC15k.mlmodel'
     class_names = ['Safety', 'Exit', 'FaceMask', 'James', 'Caution', 'RedFire', 'Restroom', 'SixFt']
     class_colors = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
                     (192, 192, 192), (192, 0, 0), (0, 192, 0), (0, 0, 192)]
