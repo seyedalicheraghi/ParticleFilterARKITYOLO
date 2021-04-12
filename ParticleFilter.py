@@ -3,8 +3,7 @@ import cv2
 import glob
 from time import time
 from numba import jit
-# from scipy import ndimage
-from math import sin, cos, sqrt, pi, radians
+from math import sin, cos, sqrt, pi, radians, acos, tan
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 import coremltools
@@ -15,14 +14,38 @@ np.set_printoptions(threshold=3)
 np.set_printoptions(suppress=True)
 
 
-def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
-           colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth):
+def rangeZ(h0, gamma, alpha, delta):
+    return h0 / (tan(gamma + alpha + delta) - tan(gamma + alpha))
+
+
+def angle_between_two_pixels(f, u1, v1, u2, v2):  # here (u,v) is (0,0) in center of image
+    p1 = np.array([u1, v1, f])
+    p2 = np.array([u2, v2, f])
+    norm_prod = np.dot(p1, p2) / (np.linalg.norm(p1) * np.linalg.norm(p2))
+    if norm_prod > 1:
+        print(norm_prod)
+        norm_prod = 1
+
+    return acos(norm_prod)
+
+
+def distance_measuring_new(bottom_row, gamma, h0, f, sz, top_row, col):
+    h, w = sz
+    # row = 0 is top row in image but (u,v) = (0,0) is center of image, with positive u to right and positive v up
+    alpha = angle_between_two_pixels(f, col - w / 2, 0., col - w / 2, h / 2 - bottom_row)
+    delta = angle_between_two_pixels(f, col - w / 2, h / 2 - bottom_row, col - w / 2, h / 2 - top_row)
+    Z = rangeZ(h0, gamma, alpha, delta)
+    return Z
+
+
+def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names, colors, sz, TextColorOnOutputImages,
+           strokeTextWidth, LineWidth, heights, Focal_lengths, pitch):
     img = cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION)
+    imsz = img.shape[0:2]
     min_open_cv_image_size = min(img.shape[0:2])
     img = img[0:min_open_cv_image_size, 0:min_open_cv_image_size]
     # get image height, width
     (h, w) = img.shape[:2]
-    # open_cv_image = ndimage.rotate(img, (ROLL * 180) / pi)
     img = cv2.warpAffine(img, cv2.getRotationMatrix2D((w / 2, h / 2), (ROLL * 180) / pi, 1.0), (w, h))
     min_open_cv_image_size = min(img.shape[0:2])
     open_cv_image = img[0:min_open_cv_image_size, 0:min_open_cv_image_size]
@@ -31,6 +54,7 @@ def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
     pred = loaded_model.predict(data={'image': pil_Image})
 
     textOnScreenX, textOnScreenY = 160, 60
+    dist_to_sign = []
     for ix in range(len(pred.get('coordinates'))):
         # create  rectangle image
         xc = pred.get('coordinates')[ix][0] * min_open_cv_image_size  # Center X
@@ -44,16 +68,19 @@ def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
         draw = ImageDraw.Draw(open_cv_image)
         class_idx = int(np.argmax(pred.get('confidence')[ix]))
         draw.text((xc, yc), str(ix), TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
-        draw.text((textOnScreenX * 5, textOnScreenY), 'Conf: ' +
-                  str(pred.get('confidence')[ix][class_idx]),
+        draw.text((textOnScreenX * 5, textOnScreenY),
+                  'Conf: ' + str(pred.get('confidence')[ix][class_idx]),
                   TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
         draw.text((textOnScreenX, textOnScreenY), str(ix) + ':  ' + names[class_idx],
                   TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
         draw.line(points, fill=colors[class_idx], width=LineWidth)
         textOnScreenY += 60
+        # Distance Estimation
+        dist_to_sign.append(distance_measuring_new(int(y+h), pitch, heights[int(class_idx)],
+                                                   Focal_lengths[0], imsz, y, xc))
     open_cv_image = np.array(open_cv_image)
     open_cv_image = open_cv_image[:, :, ::-1].copy()
-    return open_cv_image
+    return open_cv_image, dist_to_sign
 
 
 def XYZ_pitch_yaw_roll(imagesName, ARKIT):
@@ -146,7 +173,7 @@ def KDE(particles_data, KDE_model, xGrid, yGrid):
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, offset_u, offset_v, HEIGHT, WIDTH,
          resampling_threshold, newSize, probability_error, KDE_model, xGrid, yGrid, loaded_model,
-         names, colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth):
+         names, colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength):
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original)
     previousYAW = 0
@@ -162,6 +189,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         X_ARKIT = ARKIT_DATA[0] * scale + offset_u
         Z_ARKIT = ARKIT_DATA[2] * scale + offset_v
         Z_ARKIT = -Z_ARKIT
+        PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
         Rot2D_theta = particles_data[:, 2] - np.pi / 2 - previousYAW
@@ -179,8 +207,10 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         cv2.imshow("WINDOW_NAME_PARTICLES", image_particles)
         # Object detection using YOLO
         tic = time()
-        object_detection = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names,
-                                  colors, sz, TextColorOnOutputImages, strokeTextWidth, LineWidth)
+        object_detection, dist_to_sign = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names, colors
+                                                , sz, TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights,
+                                                focalLength, PITCH)
+        print(dist_to_sign)
         print('Time per YOLOV2 iteration:', (time() - tic))
         cv2.imshow("CameraLog", object_detection)
         # Waiting a little bit to show all windows
@@ -212,13 +242,16 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
 
 
 if __name__ == "__main__":
-    PATH = "../LoggedData/a2/"
-    IMAGE_EXTENSION = '.jpg'
+    PATH = "../LoggedData/a7/"
+    IMAGE_EXTENSION = '.tif'
     path_to_map = '../maps/walls_4.bmp'
     model_name = '8NMMY2NC15k.mlmodel'
     class_names = ['Safety', 'Exit', 'FaceMask', 'James', 'Caution', 'RedFire', 'Restroom', 'SixFt']
     class_colors = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
                     (192, 192, 192), (192, 0, 0), (0, 192, 0), (0, 0, 192)]
+    # FireAlarm: 4.5, FireHose: 38, Sanitizer: 9, A4_Mask: 11, Restroom: 11.75
+    Heights = [0.1143, 0.20, 0.28, .20, .15, .18, .13, .06]  # Heights of signs
+    FocalLengths = [1602]
     model_input_size = 416
     text_color_output = (0, 0, 0)
     stroke_text_width = 3
@@ -232,6 +265,7 @@ if __name__ == "__main__":
     Offset_U = 5.7699
     Offset_V = 18.8120
     probabilityError = 1.e-40
+
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
@@ -250,4 +284,5 @@ if __name__ == "__main__":
 
     main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Offset_U, Offset_V, Im_HEIGHT, Im_WIDTH,
          ResamplingThreshold, NewSizeOfNumberOfParticles, probabilityError, model, x_grid, y_grid, loadedModel,
-         class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width)
+         class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width, Heights,
+         FocalLengths)
