@@ -203,13 +203,21 @@ def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     return result
 
 
-def generate_uniform_particles_data(number_of_particles, image_original):
-    WalkableAreas = np.where(image_original[:, :, 0] == 0)
-    WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
-    return np.hstack((WalkableAreas[np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)],
-                      np.reshape(
-                          np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)])
-                          , (number_of_particles, 1)), np.ones((number_of_particles, 1), dtype=np.float64)))
+def generate_uniform_particles_data(number_of_particles, image_original, starting_point, R, flag):
+    if not flag:
+        WalkableAreas = np.where(image_original[:, :, 0] == 0)
+        WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
+        rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
+        rnd_particles = WalkableAreas[rnd_indexes]
+    else:
+        theta = np.random.uniform(0, 2 * np.pi, number_of_particles)
+        radius = np.random.uniform(0, R, number_of_particles) ** 0.5
+        rnd_particles = np.vstack((radius * np.cos(theta), radius * np.sin(theta))).T + starting_point
+    rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
+                         (number_of_particles, 1))
+    probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
+    output_particles = np.hstack((rnd_particles, rnd_yaw, probability_distribution))
+    return output_particles
 
 
 def Resampling(particles_data, resampling_threshold, newSize, probability_error, scale, HEIGHT, WIDTH):
@@ -267,10 +275,8 @@ def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
 
 @jit(nopython=True)
 def ShowParticles(particles_data, im_particles):
-    num = 0
     for particle in particles_data:
-        im_particles[int(round(particle[1])), int(round(particles_data[num, 0]))] = (0, 0, 255)
-        num = num + 1
+        im_particles[int(round(particle[1])), int(round(particle[0]))] = (0, 0, 255)
     return im_particles
 
 
@@ -288,9 +294,15 @@ def FilteringParticles(particles_data, imBinary):
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, offset_u, offset_v, HEIGHT, WIDTH,
          resampling_threshold, newSize, probability_error, KDE_model, xGrid, yGrid, loaded_model, names, colors, sz,
-         TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map):
+         TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map,
+         starting_location_flag, user_starting_point):
+
     # Create particles located on empty spaces
-    particles_data = generate_uniform_particles_data(number_of_particles, image_original)
+    particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
+                                                     floor(scale), starting_location_flag)
+    if starting_location_flag:
+        cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
+
     previousYAW = 0
     previous_X = 0
     previous_Z = 0
@@ -388,14 +400,24 @@ if __name__ == "__main__":
     Line_width = 9
     # Number of particles
     NumberOfParticles = 100000
-    # This threshold define when to start resampling to speed up the process
-    ResamplingThreshold = 5
+    # This section tries to assign starting location of the user
+    user_initial_location = (94, 47)
+    # Change the flag to change modes between known or unknown starting location
+    initiated_flag = True
+    # Factor define number of particles
+    factor = 1000
+    if initiated_flag:
+        NumberOfParticles = floor(NumberOfParticles/factor)
+        # This threshold define when to start resampling to speed up the process
+        ResamplingThreshold = 1
+    else:
+        # This threshold define when to start resampling to speed up the process
+        ResamplingThreshold = 5
     NewSizeOfNumberOfParticles = int(NumberOfParticles / 2)
     Scale = 11.7
     Offset_U = 5.7699
     Offset_V = 18.8120
     probabilityError = 1.e-40
-
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
@@ -418,4 +440,4 @@ if __name__ == "__main__":
     main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Offset_U, Offset_V, Im_HEIGHT, Im_WIDTH,
          ResamplingThreshold, NewSizeOfNumberOfParticles, probabilityError, model, x_grid, y_grid, loadedModel,
          class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width, Heights,
-         FocalLengths, EXITS_X_Y, image_binary, EXITS_MAP)
+         FocalLengths, EXITS_X_Y, image_binary, EXITS_MAP, initiated_flag, user_initial_location)
