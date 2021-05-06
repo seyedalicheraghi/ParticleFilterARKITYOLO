@@ -19,13 +19,7 @@
     <select />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2ee1920f-8897-411f-84f2-3891191cebc4" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/LoSImage.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/drawLine.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/sign_score.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ParticleFilter.py" beforeDir="false" afterPath="$PROJECT_DIR$/ParticleFilter.py" afterDir="false" />
-    </list>
+    <list default="true" id="2ee1920f-8897-411f-84f2-3891191cebc4" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -257,5 +251,9 @@
     </state>
     <state x="110" y="25" width="1606" height="1024" key="SettingsEditor/0.25.1792.1026@0.25.1792.1026" timestamp="1618590516375" />
     <state x="2238" y="153" key="SettingsEditor/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1617991544397" />
+    <state x="2549" y="492" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1620265833337">
+      <screen x="1792" y="25" width="1920" height="1055" />
+    </state>
+    <state x="2549" y="492" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620265833337" />
   </component>
 </project>
