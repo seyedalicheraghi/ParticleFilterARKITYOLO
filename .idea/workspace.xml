@@ -20,6 +20,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="2ee1920f-8897-411f-84f2-3891191cebc4" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/LoSImage.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/drawLine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sign_score.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ParticleFilter.py" beforeDir="false" afterPath="$PROJECT_DIR$/ParticleFilter.py" afterDir="false" />
     </list>
@@ -27,6 +30,13 @@
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -42,7 +52,28 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.ParticleFilter">
+    <configuration name="LoSImage" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ParticleFilterARKITYOLO" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/LoSImage.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="ParticleFilter" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="ParticleFilterARKITYOLO" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -64,9 +95,76 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="cheetsheet" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ParticleFilterARKITYOLO" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/cheetsheet.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="drawLine" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ParticleFilterARKITYOLO" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/drawLine.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="sign_score" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ParticleFilterARKITYOLO" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/sign_score.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <recent_temporary>
       <list>
         <item itemvalue="Python.ParticleFilter" />
+        <item itemvalue="Python.cheetsheet" />
+        <item itemvalue="Python.LoSImage" />
+        <item itemvalue="Python.drawLine" />
+        <item itemvalue="Python.sign_score" />
       </list>
     </recent_temporary>
   </component>
@@ -94,33 +192,70 @@
     <option name="oldMeFiltersMigrated" value="true" />
   </component>
   <component name="WindowStateProjectService">
-    <state width="1771" height="264" key="GridCell.Tab.0.bottom" timestamp="1618189052177">
+    <state x="2468" y="301" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog" timestamp="1620250616261">
+      <screen x="1792" y="25" width="1920" height="1055" />
+    </state>
+    <state x="2468" y="301" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620250616261" />
+    <state width="1771" height="340" key="GridCell.Tab.0.bottom" timestamp="1620256089697">
       <screen x="1792" y="25" width="1920" height="1055" />
     </state>
     <state width="1771" height="264" key="GridCell.Tab.0.bottom/0.25.1792.1025@0.25.1792.1025" timestamp="1618029210640" />
-    <state width="1771" height="264" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1617993607578" />
-    <state width="1771" height="264" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1618189052177" />
-    <state width="1771" height="264" key="GridCell.Tab.0.center" timestamp="1618189052176">
+    <state width="1771" height="340" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1620255992791" />
+    <state width="1771" height="340" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620256089697" />
+    <state width="1771" height="340" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1026@1792.25.1920.1055" timestamp="1620180631937" />
+    <state width="1771" height="152" key="GridCell.Tab.0.bottom/1792.25.1920.1055/0.25.1792.1027@0.25.1792.1027" timestamp="1619808108498" />
+    <state width="1771" height="264" key="GridCell.Tab.0.bottom/1792.25.1920.985/0.25.1792.1095@0.25.1792.1095" timestamp="1619585045523" />
+    <state width="1771" height="264" key="GridCell.Tab.0.bottom/1792.25.1920.985/0.25.1792.1095@1792.25.1920.985" timestamp="1619584621942" />
+    <state width="1771" height="340" key="GridCell.Tab.0.center" timestamp="1620256089697">
       <screen x="1792" y="25" width="1920" height="1055" />
     </state>
     <state width="1771" height="264" key="GridCell.Tab.0.center/0.25.1792.1025@0.25.1792.1025" timestamp="1618029210639" />
-    <state width="1771" height="264" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1617993607578" />
-    <state width="1771" height="264" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1618189052176" />
-    <state width="1771" height="264" key="GridCell.Tab.0.left" timestamp="1618189052176">
+    <state width="1771" height="340" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1620255992790" />
+    <state width="1771" height="340" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620256089697" />
+    <state width="1771" height="340" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1026@1792.25.1920.1055" timestamp="1620180631936" />
+    <state width="1771" height="152" key="GridCell.Tab.0.center/1792.25.1920.1055/0.25.1792.1027@0.25.1792.1027" timestamp="1619808108498" />
+    <state width="1771" height="264" key="GridCell.Tab.0.center/1792.25.1920.985/0.25.1792.1095@0.25.1792.1095" timestamp="1619585045522" />
+    <state width="1771" height="264" key="GridCell.Tab.0.center/1792.25.1920.985/0.25.1792.1095@1792.25.1920.985" timestamp="1619584621942" />
+    <state width="1771" height="340" key="GridCell.Tab.0.left" timestamp="1620256089696">
       <screen x="1792" y="25" width="1920" height="1055" />
     </state>
     <state width="1771" height="264" key="GridCell.Tab.0.left/0.25.1792.1025@0.25.1792.1025" timestamp="1618029210639" />
-    <state width="1771" height="264" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1617993607577" />
-    <state width="1771" height="264" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1618189052176" />
-    <state width="1771" height="264" key="GridCell.Tab.0.right" timestamp="1618189052177">
+    <state width="1771" height="340" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1620255992789" />
+    <state width="1771" height="340" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620256089696" />
+    <state width="1771" height="340" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1026@1792.25.1920.1055" timestamp="1620180631936" />
+    <state width="1771" height="152" key="GridCell.Tab.0.left/1792.25.1920.1055/0.25.1792.1027@0.25.1792.1027" timestamp="1619808108497" />
+    <state width="1771" height="264" key="GridCell.Tab.0.left/1792.25.1920.985/0.25.1792.1095@0.25.1792.1095" timestamp="1619585045522" />
+    <state width="1771" height="264" key="GridCell.Tab.0.left/1792.25.1920.985/0.25.1792.1095@1792.25.1920.985" timestamp="1619584621942" />
+    <state width="1771" height="340" key="GridCell.Tab.0.right" timestamp="1620256089697">
       <screen x="1792" y="25" width="1920" height="1055" />
     </state>
     <state width="1771" height="264" key="GridCell.Tab.0.right/0.25.1792.1025@0.25.1792.1025" timestamp="1618029210640" />
-    <state width="1771" height="264" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1617993607578" />
-    <state width="1771" height="264" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1618189052177" />
-    <state x="2238" y="153" key="SettingsEditor" timestamp="1617991544397">
+    <state width="1771" height="340" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1025@0.25.1792.1025" timestamp="1620255992790" />
+    <state width="1771" height="340" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620256089697" />
+    <state width="1771" height="340" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1026@1792.25.1920.1055" timestamp="1620180631937" />
+    <state width="1771" height="152" key="GridCell.Tab.0.right/1792.25.1920.1055/0.25.1792.1027@0.25.1792.1027" timestamp="1619808108498" />
+    <state width="1771" height="264" key="GridCell.Tab.0.right/1792.25.1920.985/0.25.1792.1095@0.25.1792.1095" timestamp="1619585045522" />
+    <state width="1771" height="264" key="GridCell.Tab.0.right/1792.25.1920.985/0.25.1792.1095@1792.25.1920.985" timestamp="1619584621942" />
+    <state width="1771" height="326" key="GridCell.Tab.1.bottom" timestamp="1620250529959">
       <screen x="1792" y="25" width="1920" height="1055" />
     </state>
+    <state width="1771" height="326" key="GridCell.Tab.1.bottom/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620250529959" />
+    <state width="1771" height="326" key="GridCell.Tab.1.center" timestamp="1620250529958">
+      <screen x="1792" y="25" width="1920" height="1055" />
+    </state>
+    <state width="1771" height="326" key="GridCell.Tab.1.center/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620250529958" />
+    <state width="1771" height="326" key="GridCell.Tab.1.left" timestamp="1620250529958">
+      <screen x="1792" y="25" width="1920" height="1055" />
+    </state>
+    <state width="1771" height="326" key="GridCell.Tab.1.left/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620250529958" />
+    <state width="1771" height="326" key="GridCell.Tab.1.right" timestamp="1620250529958">
+      <screen x="1792" y="25" width="1920" height="1055" />
+    </state>
+    <state width="1771" height="326" key="GridCell.Tab.1.right/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1620250529958" />
+    <state x="110" y="25" width="1606" height="1024" key="SettingsEditor" timestamp="1618590516375">
+      <screen x="0" y="25" width="1792" height="1026" />
+    </state>
+    <state x="110" y="25" width="1606" height="1024" key="SettingsEditor/0.25.1792.1026@0.25.1792.1026" timestamp="1618590516375" />
     <state x="2238" y="153" key="SettingsEditor/1792.25.1920.1055/0.25.1792.1025@1792.25.1920.1055" timestamp="1617991544397" />
   </component>
 </project>
