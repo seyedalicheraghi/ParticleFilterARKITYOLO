@@ -3,7 +3,6 @@ import cv2
 import glob
 from numba import jit
 from math import sin, cos, sqrt, pi, radians, acos, tan, floor
-from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 import coremltools
 from PIL import Image, ImageDraw, ImageFont
@@ -210,21 +209,28 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
         rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
         rnd_particles = WalkableAreas[rnd_indexes]
     else:
-        theta = np.random.uniform(0, 2 * np.pi, number_of_particles)
-        radius = np.random.uniform(0, R, number_of_particles) ** 0.5
-        rnd_particles = np.vstack((radius * np.cos(theta), radius * np.sin(theta))).T + starting_point
+        h, w, d = image_original.shape
+        mask = np.zeros((h, w), np.uint8)
+        circle_img = cv2.circle(mask, starting_point, R, (255, 255, 255), thickness=-1)
+        img1 = cv2.bitwise_not(image_original.copy())
+        masked_data = cv2.bitwise_not(cv2.bitwise_and(img1, img1, mask=circle_img))
+        WalkableAreas = np.where(masked_data[:, :, 0] == 0)
+        WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
+        rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
+        rnd_particles = WalkableAreas[rnd_indexes]
     rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
                          (number_of_particles, 1))
     probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
+    probability_distribution /= np.sum(probability_distribution)
     output_particles = np.hstack((rnd_particles, rnd_yaw, probability_distribution))
     return output_particles
 
 
-def Resampling(particles_data, resampling_threshold, newSize, probability_error, scale, HEIGHT, WIDTH):
+def Resampling(particles_data, resampling_threshold, newSize, scale, HEIGHT, WIDTH):
     if particles_data.shape[0] <= NumberOfParticles / resampling_threshold:
         index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, 3])
         newParticles = particles_data[index]
-        newParticles[:, 3] = newParticles[:, 3] * 0 + probability_error
+        newParticles[:, 3] = newParticles[:, 3] * 0 + probabilityError
         newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
 
         newParticles[:, 0] = newParticles[:, 0] + newParticlesError[:, 0]
@@ -293,23 +299,26 @@ def FilteringParticles(particles_data, imBinary):
 
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, offset_u, offset_v, HEIGHT, WIDTH,
-         resampling_threshold, newSize, probability_error, KDE_model, xGrid, yGrid, loaded_model, names, colors, sz,
-         TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map,
-         starting_location_flag, user_starting_point):
-
+         resampling_threshold, newSize, loaded_model, names, colors, sz, TextColorOnOutputImages,
+         strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map, starting_location_flag,
+         user_starting_point, sampling_distance):
+    frame_counter_buffer = 0
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
-                                                     floor(scale), starting_location_flag)
+                                                     floor(sampling_distance * scale), starting_location_flag)
     if starting_location_flag:
         cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
-
+    File_object = open(r"./MyFile2.csv", "w+")
     previousYAW = 0
     previous_X = 0
     previous_Z = 0
-    # plt.subplots_adjust(left=0, right=1, top=1, bottom=0)  # leaves no white space around the axes
-    # plt.gca().set_axis_off()
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
+        for item in np.sort(particles_data.view('f8,f8,f8,f8'), order=['f3'], axis=0).view(np.float):
+            File_object.writelines(str(item[0]) + ', ' + str(item[1]) + ', ' +
+                                   str(item[2]) + ', ' + str(item[3]) + '\n')
+        File_object.writelines(str(particles_data.shape) + ', ' + str(frame_counter_buffer) + '\n')
+        File_object.writelines("------------------------------------\n")
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
@@ -336,8 +345,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
         particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Resampling step. This step tries to counter number of particles and replace removed particles with new ones.
-        particles_data = Resampling(particles_data, resampling_threshold,
-                                    newSize, probability_error, scale, HEIGHT, WIDTH)
+        particles_data = Resampling(particles_data, resampling_threshold, newSize, scale, HEIGHT, WIDTH)
         # Remove resampled data on walls
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
         # # Update saved data
@@ -354,22 +362,23 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
             xyz = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
 
         Signs_LOS_Image = Exits_Map.copy()
+        # Find particles predicted to see the sign and give higher probability to them
         for it in xyz:
-            particles_data[it, 3] += 0.1
+            particles_data[it, 3] *= 2
             Signs_LOS_Image[int(round(particles_data[it, 1])), int(round(particles_data[it, 0]))] = (0, 0, 255)
         particles_data[:, 3] /= np.sum(particles_data[:, 3])
         HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
-        # KDE(particles_data, KDE_model, xGrid, yGrid)
         # -----------------------Visualization Segment------------------------
-
-        # concatanate image Horizontally
+        print(Signs_LOS_Image.shape, image_particles.shape)
         Left_Col = np.concatenate((np.concatenate((Signs_LOS_Image, image_particles), axis=0),
-                                  cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
+                                   cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
         output = np.hstack((Left_Col, Right_Col))
         cv2.imshow("PARTICLES", output)
-
+        cv2.setMouseCallback('PARTICLES', mouse_click)
+        while while_flag:
+            cv2.waitKey(1)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
@@ -378,20 +387,73 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         if cv2.waitKey(1) & 0xFF == 27:
             break
         plt.pause(0.000001)
-        # input("Press Enter to continue...")
+        frame_counter_buffer += 1
+
+
+img = []
+while_flag = True
+probabilityError = 1.e-40
+# Change the flag to change modes between known or unknown starting location
+initiated_flag = True
+# This flag is responsible to pause and continue the process
+control_flag = False
+# This section tries to assign starting location of the user
+user_initial_location = (94, 47)
+
+
+# define the events for the mouse_click.
+def mouse_click(event, x, y, flags, param):
+    global user_initial_location
+    global while_flag
+    global initiated_flag
+    global control_flag
+
+    if not control_flag:
+        # to check if left mouse button was clicked
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # display that left button was clicked.
+            cv2.circle(img, (x, y), radius=2, color=(255, 255, 0), thickness=3)
+            cv2.imshow('image', img)
+            user_initial_location = (x, y)
+            while_flag = False
+            initiated_flag = True
+            control_flag = True
+        if event == cv2.EVENT_RBUTTONDOWN:
+            while_flag = False
+            initiated_flag = False
+            control_flag = True
+    else:
+        # to check if left mouse button was clicked for pausing
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if while_flag:
+                while_flag = False
+            else:
+                while_flag = True
+        # Check if right mouse button was clicked for ending the program
+        if event == cv2.EVENT_RBUTTONDOWN:
+            exit(0)
 
 
 if __name__ == "__main__":
-    PATH = "../LoggedData/a2/"
+    flr = 4
+    PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
-    path_to_map = '../maps/walls_4.bmp'
+    path_to_map = '../maps/walls_' + str(flr) + '.bmp'
     model_name = '8NMMY2NC15k.mlmodel'
     class_names = ['Safety', 'Exit', 'FaceMask', 'James', 'Caution', 'RedFire', 'Restroom', 'SixFt']
     class_colors = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
                     (192, 192, 192), (192, 0, 0), (0, 192, 0), (0, 0, 192)]
-    # FireAlarm: 4.5, FireHose: 38, Sanitizer: 9, A4_Mask: 11, Restroom: 11.75
-    Heights = [0.1143, 0.20, 0.28, .20, .15, .18, .13, .06]  # Heights of signs
-    EXITS_X_Y = np.array([(94, 47), (68, 178), (278, 178), (292, 157), (392, 157), (392, 85)])
+    # I refers to Inches and M refers to meters
+    # FireHose: 38 I -> 0.9652 M
+    # Sanitizer: 9 I -> 0.2286 M
+    # Exit Height:      4-1/2 I -> 0.19685 M    ----  Exit Width:
+    # FireAlarm Height: 4-1/2 I -> 0.1143 M    ----  FireAlarm Width: 3 I -> 0.0762 M
+    # Restroom Height: 11-3/4 I -> 0.29845 M   ----  Restroom Width: 18 I -> 0.4572 M
+    # FaceMask Height: 11 I -> 0.2794 M        ----  FaceMask Width: 8.5 I ->  0.2159M
+    # Six Feet Height: 11 I -> 0.2794 M        ----  FaceMask Width: 8.5 I ->  0.2159M
+    # James Height:    11 I -> 0.2794 M        ----  James Width:    8.5 I ->  0.2159M
+    Heights = [0.2794, 0.19685, 0.2794, 0.2794, 0.2794, 0.1143, 0.29845, 0.2794]  # Heights of signs in meters
+    EXITS_X_Y = np.array([(92, 47), (322, 49), (392, 87), (392, 158), (290, 157), (277, 174), (71, 176)])
     EXITS_MAP = cv2.imread('./exits_map.bmp')
     FocalLengths = [1602]
     model_input_size = 416
@@ -400,14 +462,22 @@ if __name__ == "__main__":
     Line_width = 9
     # Number of particles
     NumberOfParticles = 100000
-    # This section tries to assign starting location of the user
-    user_initial_location = (94, 47)
-    # Change the flag to change modes between known or unknown starting location
-    initiated_flag = True
     # Factor define number of particles
-    factor = 1000
+    factor = 100
+    # Read Image
+    imgOriginal = cv2.imread(path_to_map, 1)
+    img = imgOriginal.copy()
+    # show image
+    cv2.imshow('image', img)
+    cv2.setMouseCallback('image', mouse_click)
+    while while_flag:
+        cv2.waitKey(2)
+
+    cv2.destroyWindow('image')
+    # Sample distance define how far from a selected starting point we need to do sampling
+    sample_distance = 3
     if initiated_flag:
-        NumberOfParticles = floor(NumberOfParticles/factor)
+        NumberOfParticles = floor(NumberOfParticles / factor)
         # This threshold define when to start resampling to speed up the process
         ResamplingThreshold = 1
     else:
@@ -417,10 +487,8 @@ if __name__ == "__main__":
     Scale = 11.7
     Offset_U = 5.7699
     Offset_V = 18.8120
-    probabilityError = 1.e-40
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
-    # Read Image
-    imgOriginal = cv2.imread(path_to_map, 1)
+
     image_binary = imgOriginal.copy()[:, :, 0]
     image_binary[image_binary > 64] = 255
     image_binary[image_binary <= 64] = 0
@@ -428,16 +496,14 @@ if __name__ == "__main__":
     Im_HEIGHT, Im_WIDTH, dim = imgOriginal.shape
     # make imgOriginal a single-channel grayscale image if it's originally an RGB
     imageP = imgOriginal.copy()[:, :, 0] if len(imgOriginal.shape) == 3 else imgOriginal.copy()
-    x_grid, y_grid = np.mgrid[0:Im_WIDTH:25j, 0:Im_HEIGHT:25j]
     # Read the TXT ARKIT data
     ARKIT_LOGGED = [x for x in open(glob.glob(PATH + "*.txt")[0], "r")]
     # Read Images and sort them
     ListOfCameraLogImages = [int(file.split('/')[len(file.split('/')) - 1].replace(IMAGE_EXTENSION, ''))
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
-    model = KernelDensity(kernel='gaussian', bandwidth=20)
 
     main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Offset_U, Offset_V, Im_HEIGHT, Im_WIDTH,
-         ResamplingThreshold, NewSizeOfNumberOfParticles, probabilityError, model, x_grid, y_grid, loadedModel,
-         class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width, Heights,
-         FocalLengths, EXITS_X_Y, image_binary, EXITS_MAP, initiated_flag, user_initial_location)
+         ResamplingThreshold, NewSizeOfNumberOfParticles, loadedModel, class_names, class_colors,
+         model_input_size, text_color_output, stroke_text_width, Line_width, Heights, FocalLengths, EXITS_X_Y,
+         image_binary, EXITS_MAP, initiated_flag, user_initial_location, sample_distance)
