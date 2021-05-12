@@ -40,7 +40,7 @@ def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names, col
            strokeTextWidth, LineWidth, heights, Focal_lengths, pitch):
     img = cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION)
     imsz = img.shape[0:2]
-    min_open_cv_image_size = min(img.shape[0:2])
+    min_open_cv_image_size = min(imsz)
     img = img[0:min_open_cv_image_size, 0:min_open_cv_image_size]
     # get image height, width
     (h, w) = img.shape[:2]
@@ -88,15 +88,9 @@ def XYZ_pitch_yaw_roll(imagesName, ARKIT):
     # read the CoreML txt file
     for items in range(0, len(ARKIT)):
         if ARKIT[items].strip() == imagesName.strip():
-            xyz = ARKIT[items + 4].split(',')
-            sp = ARKIT[items + 5].split('<Float>')
-            sp1 = sp[1].split(',')
-            sp2 = sp1[0].split('(')
-            sp3 = sp1[2].split(')')
-            pitch = float(sp2[1])
-            yaw = float(sp1[1].strip())
-            roll = float(sp3[0].strip())
-            return float(xyz[0].strip()), float(xyz[1].strip()), float(xyz[2].strip()), pitch, yaw, roll
+            [x, y, z] = [float(x) for x in ARKIT[items+4].split(',')]
+            [pitch, yaw, roll] = [float(x) for x in ARKIT[items+5].split('(')[1].strip(')').split(',')]
+            return x, y, z, pitch, yaw, roll
 
 
 @jit(nopython=True)
@@ -408,7 +402,7 @@ if __name__ == "__main__":
     imageP = imgOriginal.copy()[:, :, 0] if len(imgOriginal.shape) == 3 else imgOriginal.copy()
     x_grid, y_grid = np.mgrid[0:Im_WIDTH:25j, 0:Im_HEIGHT:25j]
     # Read the TXT ARKIT data
-    ARKIT_LOGGED = [x for x in open(glob.glob(PATH + "*.txt")[0], "r")]
+    ARKIT_LOGGED = [x.strip() for x in open(glob.glob(PATH + "*.txt")[0], "r")]
     # Read Images and sort them
     ListOfCameraLogImages = [int(file.split('/')[len(file.split('/')) - 1].replace(IMAGE_EXTENSION, ''))
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
