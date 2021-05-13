@@ -347,8 +347,8 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # Add -3 to 3 degree error to particles Yaw
         YAW_ERROR = np.radians(np.random.uniform(low=-3, high=3, size=(particles_data.shape[0], 2)))
         # Updating X and Y for each hypothesis
-        particles_data[:, 0] = particles_data[:, 0] + V #+ XY_ERROR[:, 0]
-        particles_data[:, 1] = particles_data[:, 1] + U #+ XY_ERROR[:, 1]
+        particles_data[:, 0] = particles_data[:, 0] + U #+ XY_ERROR[:, 0]
+        particles_data[:, 1] = particles_data[:, 1] + V #+ XY_ERROR[:, 1]
         # Updating Yaw for each hypothesis
         particles_data[:, 2] = particles_data[:, 2] #+ YAW_ERROR[:, 0]
 
