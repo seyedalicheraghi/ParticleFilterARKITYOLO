@@ -88,8 +88,11 @@ def mapping(imBinary, imgOriginal, EXITS_X_Y, image_matrix, accuracy):
     return image_matrix
 
 
-path_to_map = '../maps/walls_4.bmp'
-EXIT_XY = [(94, 47), (68, 178), (278, 178), (292, 157), (392, 157), (392, 85)]
+flr = 2
+path_to_map = '../maps/walls_' + str(flr) + '.bmp'
+# EXIT_XY = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Floor
+# EXIT_XY = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Floor user_selection_3.bmp
+EXIT_XY = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Floor user_selection_2.bmp
 # Read Image
 image_Original = cv2.imread(path_to_map, 1)
 image_Binary = image_Original.copy()[:, :, 0]
@@ -102,4 +105,4 @@ accuracy = 10
 mapping(image_Binary, image_Original, EXIT_XY, exit_matrix, accuracy)
 accuracy = 0.01
 mapped = mapping(image_Binary, image_Original, EXIT_XY, exit_matrix, accuracy)
-cv2.imwrite('./exits_map.bmp', mapped)
+cv2.imwrite('./exits_' + str(flr) + '.bmp', mapped)

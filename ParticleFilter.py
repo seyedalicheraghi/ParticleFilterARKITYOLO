@@ -219,29 +219,20 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
         rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
         rnd_particles = WalkableAreas[rnd_indexes]
     rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
-                         (number_of_particles, 1))
+                         (number_of_particles, 1)) * 0
+
     probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
     probability_distribution /= np.sum(probability_distribution)
     output_particles = np.hstack((rnd_particles, rnd_yaw, probability_distribution))
     return output_particles
 
 
-def Resampling(particles_data, resampling_threshold, newSize, scale, HEIGHT, WIDTH):
-    if particles_data.shape[0] <= NumberOfParticles / resampling_threshold:
-        index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, 3])
-        newParticles = particles_data[index]
-        newParticles[:, 3] = newParticles[:, 3] * 0 + probabilityError
-        newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
-
-        newParticles[:, 0] = newParticles[:, 0] + newParticlesError[:, 0]
-        newParticles[:, 1] = newParticles[:, 1] + newParticlesError[:, 1]
-        newParticles = newParticles * [1.]
-        # The height and width or lower than zero
-        FilteredItems = find_pixels_outside_map(newParticles, HEIGHT, WIDTH)
-        newParticles = np.array([np.delete(newParticles, FilteredItems[::-1], 0)])[0]
-        particles_data = np.concatenate((particles_data, newParticles), axis=0)
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
-    return particles_data
+def Resampling(old_particles, newSize):
+    index = np.random.choice(old_particles.shape[0], newSize, p=old_particles[:, 3])
+    newParticles = old_particles[index] * [1.]
+    newParticles[:, 3] = 1
+    newParticles[:, 3] /= np.sum(newParticles[:, 3])
+    return newParticles
 
 
 def KDE(particles_data, KDE_model, xGrid, yGrid):
@@ -267,16 +258,26 @@ def GaussianHeatmap(particles_data, H, W):
 
 @jit(nopython=True)
 def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
-    xy = []
+    particle_index = []
     for exits_xy in Exit_X_Y:
         mydist = np.sqrt(np.power(particles[:, 0:1] - exits_xy[0], 2) + np.power(particles[:, 1:2] - exits_xy[1], 2))
         inx = 0
         for items in mydist:
             if r - scale < int(round(items[0])) < r + scale:
-                if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 255:
-                    xy.append(inx)
+                if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
+                    particle_index.append(inx)
             inx = inx + 1
-    return xy
+    return particle_index
+
+
+@jit(nopython=True)
+def updating_detection_scores(Particles_in_LOS_Index, p_data, IMAGE_LOS):
+    # Find particles predicted to see the sign and give higher probability to them
+    for inx in Particles_in_LOS_Index:
+        p_data[inx, 3] *= 2
+        # For Visualization purposes
+        IMAGE_LOS[int(round(p_data[inx, 1])), int(round(p_data[inx, 0]))] = (0, 0, 255)
+    return IMAGE_LOS, p_data
 
 
 @jit(nopython=True)
@@ -298,20 +299,24 @@ def FilteringParticles(particles_data, imBinary):
     return xy
 
 
-def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, offset_u, offset_v, HEIGHT, WIDTH,
-         resampling_threshold, newSize, loaded_model, names, colors, sz, TextColorOnOutputImages,
-         strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map, starting_location_flag,
+def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
+         resampling_th, loaded_model, names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
+         LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map, starting_location_flag,
          user_starting_point, sampling_distance):
     frame_counter_buffer = 0
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
                                                      floor(sampling_distance * scale), starting_location_flag)
+    # image_original = np.zeros(image_original.shape, dtype=np.uint8)
+    # imgP = np.zeros(image_original.shape[0:2], dtype=np.uint8)
+    imBinary = imgP.copy()
     if starting_location_flag:
         cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
     File_object = open(r"./MyFile2.csv", "w+")
     previousYAW = 0
     previous_X = 0
     previous_Z = 0
+    image_trajectory = image_original.copy()
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
         for item in np.sort(particles_data.view('f8,f8,f8,f8'), order=['f3'], axis=0).view(np.float):
@@ -319,20 +324,35 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
                                    str(item[2]) + ', ' + str(item[3]) + '\n')
         File_object.writelines(str(particles_data.shape) + ', ' + str(frame_counter_buffer) + '\n')
         File_object.writelines("------------------------------------\n")
+
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
-        X_ARKIT = ARKIT_DATA[0] * scale + offset_u
-        Z_ARKIT = ARKIT_DATA[2] * scale + offset_v
-        Z_ARKIT = -Z_ARKIT
+        X_ARKIT = ARKIT_DATA[0] * scale
+        Z_ARKIT = -ARKIT_DATA[2] * scale
+        image_trajectory[int(round(X_ARKIT))+user_starting_point[1], int(round(Z_ARKIT))+user_starting_point[0]] = (255, 0, 255)
+
         PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
-        Rot2D_theta = particles_data[:, 2] - np.pi / 2 - previousYAW
+
+        Rot2D_theta = particles_data[:, 2] - np.pi/2 - previousYAW
         DeltaX = X_ARKIT - previous_X
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
+
+        # Add -1 to 1 meter error to particles X and Y
+        XY_ERROR = np.random.uniform(low=-2, high=2, size=(particles_data.shape[0], 2))
+        # Add -3 to 3 degree error to particles Yaw
+        YAW_ERROR = np.radians(np.random.uniform(low=-3, high=3, size=(particles_data.shape[0], 2)))
+        # Updating X and Y for each hypothesis
+        particles_data[:, 0] = particles_data[:, 0] + U #+ XY_ERROR[:, 0]
+        particles_data[:, 1] = particles_data[:, 1] + V #+ XY_ERROR[:, 1]
+        # Updating Yaw for each hypothesis
+        particles_data[:, 2] = particles_data[:, 2] #+ YAW_ERROR[:, 0]
+
+        # Updating X and Y for each hypothesis
         particles_data[:, 0] = particles_data[:, 0] + U
         particles_data[:, 1] = particles_data[:, 1] + V
 
@@ -340,37 +360,47 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
         particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
         old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
-        # Next step is to remove items that go through walls in indoor space
+        # This step tries to remove particles that go through walls in indoor space
         FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
         particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
-        # Resampling step. This step tries to counter number of particles and replace removed particles with new ones.
-        particles_data = Resampling(particles_data, resampling_threshold, newSize, scale, HEIGHT, WIDTH)
-        # Remove resampled data on walls
+        # Remove particles on walls
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
-        # # Update saved data
+        # Update YAW data
         particles_data[:, 2] = particles_data[:, 2] + (YAW - previousYAW)
+        # Normalize particles probability distribution after deleting particles which go through walls
+        particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Object detection using YOLO
         object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
                                                          names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
                                                          LineWidth, sign_heights, focalLength, PITCH)
-
-        image_particles = ShowParticles(particles_data, image_particles.copy())
-        xyz = []
+        LOS_Image = Exits_Map.copy()
+        # Find particles on field of view of Exit signs and update their score to them
         if 1 in cls_num:
             radius_to_sign = int(round(scale * dist_to_sign[cls_num.index(1)]))
-            xyz = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
+            Index_Particles_LOS = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
+            if len(Index_Particles_LOS) is not 0:
+                LOS_Image, particles_data = updating_detection_scores(Index_Particles_LOS, particles_data, LOS_Image)
+                # Normalize particles probability distribution
+                particles_data[:, 3] /= np.sum(particles_data[:, 3])
+        # Resampling step. This step tries to count number of particles and replace removed particles with new ones
+        # Resampling would be called only if number of particles get lower than NumberOfParticles / resampling_th
 
-        Signs_LOS_Image = Exits_Map.copy()
-        # Find particles predicted to see the sign and give higher probability to them
-        for it in xyz:
-            particles_data[it, 3] *= 2
-            Signs_LOS_Image[int(round(particles_data[it, 1])), int(round(particles_data[it, 0]))] = (0, 0, 255)
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
-        HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
+        if particles_data.shape[0] is 0:
+            particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
+                                                             floor(sampling_distance * scale), False)
+        # if particles_data.shape[0] <= NumberOfParticles / resampling_th:
+        #     particles_data = Resampling(particles_data, number_of_particles)
+        # -----------------------Updating Parameters--------------------------
+        previousYAW = YAW
+        previous_X = X_ARKIT
+        previous_Z = Z_ARKIT
         # -----------------------Visualization Segment------------------------
-        print(Signs_LOS_Image.shape, image_particles.shape)
-        Left_Col = np.concatenate((np.concatenate((Signs_LOS_Image, image_particles), axis=0),
+        # Show particles on the map
+        image_particles = ShowParticles(particles_data, image_particles.copy())
+        # Show the heatmap
+        HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
+        # Concatenate maps for visualization
+        Left_Col = np.concatenate((np.concatenate((image_trajectory, image_particles), axis=0),
                                    cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
@@ -379,15 +409,12 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         cv2.setMouseCallback('PARTICLES', mouse_click)
         while while_flag:
             cv2.waitKey(1)
-        # -----------------------Updating Parameters--------------------------
-        previousYAW = YAW
-        previous_X = X_ARKIT
-        previous_Z = Z_ARKIT
         # -----------------------Waiting a little bit to show all windows-----
         if cv2.waitKey(1) & 0xFF == 27:
             break
         plt.pause(0.000001)
         frame_counter_buffer += 1
+    cv2.imwrite('./img_traj.bmp', image_trajectory)
 
 
 img = []
@@ -435,7 +462,7 @@ def mouse_click(event, x, y, flags, param):
 
 
 if __name__ == "__main__":
-    flr = 4
+    flr = 2
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
@@ -453,17 +480,19 @@ if __name__ == "__main__":
     # Six Feet Height: 11 I -> 0.2794 M        ----  FaceMask Width: 8.5 I ->  0.2159M
     # James Height:    11 I -> 0.2794 M        ----  James Width:    8.5 I ->  0.2159M
     Heights = [0.2794, 0.19685, 0.2794, 0.2794, 0.2794, 0.1143, 0.29845, 0.2794]  # Heights of signs in meters
-    EXITS_X_Y = np.array([(92, 47), (322, 49), (392, 87), (392, 158), (290, 157), (277, 174), (71, 176)])
-    EXITS_MAP = cv2.imread('./exits_map.bmp')
+    # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
+    EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
+    # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
+    EXITS_MAP = cv2.bitwise_not(cv2.imread('exits_' + str(flr) + '.bmp'))
     FocalLengths = [1602]
     model_input_size = 416
     text_color_output = (0, 0, 0)
     stroke_text_width = 3
     Line_width = 9
     # Number of particles
-    NumberOfParticles = 100000
+    NumberOfParticles = 10000
     # Factor define number of particles
-    factor = 100
+    factor = 10
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
     img = imgOriginal.copy()
@@ -475,18 +504,14 @@ if __name__ == "__main__":
 
     cv2.destroyWindow('image')
     # Sample distance define how far from a selected starting point we need to do sampling
-    sample_distance = 3
+    sample_distance = 2
+    # This threshold define when to start resampling to speed up the process
+    ResamplingThreshold = 5
     if initiated_flag:
         NumberOfParticles = floor(NumberOfParticles / factor)
-        # This threshold define when to start resampling to speed up the process
-        ResamplingThreshold = 1
-    else:
-        # This threshold define when to start resampling to speed up the process
-        ResamplingThreshold = 5
-    NewSizeOfNumberOfParticles = int(NumberOfParticles / 2)
-    Scale = 11.7
-    Offset_U = 5.7699
-    Offset_V = 18.8120
+    Scale = 12
+    # Offset_U = 5.7699
+    # Offset_V = 18.8120
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
 
     image_binary = imgOriginal.copy()[:, :, 0]
@@ -503,7 +528,7 @@ if __name__ == "__main__":
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
 
-    main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Offset_U, Offset_V, Im_HEIGHT, Im_WIDTH,
-         ResamplingThreshold, NewSizeOfNumberOfParticles, loadedModel, class_names, class_colors,
-         model_input_size, text_color_output, stroke_text_width, Line_width, Heights, FocalLengths, EXITS_X_Y,
-         image_binary, EXITS_MAP, initiated_flag, user_initial_location, sample_distance)
+    main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH, ResamplingThreshold,
+         loadedModel, class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width,
+         Heights, FocalLengths, EXITS_X_Y, image_binary, EXITS_MAP, initiated_flag, user_initial_location,
+         sample_distance)

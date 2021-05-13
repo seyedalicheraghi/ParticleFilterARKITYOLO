@@ -17,16 +17,19 @@ img = []
 
 # define the events for the mouse_click.
 def mouse_click(event, x, y, flags, param):
+    global flr
     # to check if left mouse button was clicked
     if event == cv2.EVENT_LBUTTONDOWN:
         # display that left button was clicked.
         cv2.circle(img, (x, y), radius=2, color=(255, 255, 0), thickness=3)
         cv2.imshow('image', img)
         print((x, y))
+        cv2.imwrite('./user_selection_' + str(flr) + '.bmp', img)
 
 
+flr = 4
 if __name__ == "__main__":
-    path_to_map = '../maps/walls_4.bmp'
+    path_to_map = '../maps/walls_' + str(flr) + '.bmp'
     img = cv2.imread(path_to_map)
     # show image
     cv2.imshow('image', img)
