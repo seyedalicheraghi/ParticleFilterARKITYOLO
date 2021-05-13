@@ -234,8 +234,8 @@ def KDE(particles_data, KDE_model, xGrid, yGrid):
 
 def GaussianHeatmap(particles_data, H, W):
     heatmap = np.zeros(shape=(H, W))
-    XY_Columns = np.around(particles_data[:, 0:2]).astype(int)
-    heatmap[XY_Columns[:, 1], XY_Columns[:, 0]] += 1
+    for p in particles_data:
+        heatmap[floor(p[1]), floor(p[0])] = heatmap[floor(p[1]), floor(p[0])] + p[3]
     heatmap = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=10)
     # plt.clf()
     # plt.contourf(heatmap, levels=7, cmap='gnuplot', alpha=.7)
