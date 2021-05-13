@@ -330,7 +330,9 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
         X_ARKIT = ARKIT_DATA[0] * scale
         Z_ARKIT = -ARKIT_DATA[2] * scale
-        image_trajectory[int(round(X_ARKIT))+user_starting_point[1], int(round(Z_ARKIT))+user_starting_point[0]] = (255, 0, 255)
+        x_trajectory = int(round(X_ARKIT)) + user_starting_point[1]
+        y_trajectory = int(round(Z_ARKIT)) + user_starting_point[0]
+        image_trajectory[x_trajectory, y_trajectory] = (255, 255, 0)
 
         PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
@@ -458,7 +460,7 @@ def mouse_click(event, x, y, flags, param):
 
 
 if __name__ == "__main__":
-    flr = 2
+    flr = 3
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
