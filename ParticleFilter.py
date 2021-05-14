@@ -12,6 +12,8 @@ np.set_printoptions(precision=40)
 np.set_printoptions(threshold=3)
 np.set_printoptions(suppress=True)
 
+# Constant variables to describe particle data array index
+Z_ = 0; X_ = 1; YAW_ = 2; SCALE_ = 3; SCORE_ = 4
 
 def rangeZ(h0, gamma, alpha, delta):
     return h0 / (tan(gamma + alpha + delta) - tan(gamma + alpha))
@@ -98,11 +100,11 @@ def find_nearest_barrier(binmap, particles_XY, new_particles):
     index_to_remove = []
     h, w = binmap.shape
     for counter in range(0, len(particles_XY)):
-        x = particles_XY[counter][0]
-        y = particles_XY[counter][1]
+        x = particles_XY[counter][Z_]
+        y = particles_XY[counter][X_]
         # access image as im[x,y] even though this is not idiomatic!
         # assume that x and y are integers
-        c, s = cos(particles_XY[counter][2]), sin(particles_XY[counter][2])
+        c, s = cos(particles_XY[counter][YAW_]), sin(particles_XY[counter][YAW_])
         cnt = 0
         hit = False
         while not hit:
@@ -117,7 +119,7 @@ def find_nearest_barrier(binmap, particles_XY, new_particles):
         if dist == 0:
             index_to_remove.append(counter)
         else:
-            distance = sqrt(((x - new_particles[counter][0]) ** 2) + ((y - new_particles[counter][1]) ** 2))
+            distance = sqrt(((x - new_particles[counter][Z_]) ** 2) + ((y - new_particles[counter][X_]) ** 2))
             if distance > dist:
                 index_to_remove.append(counter)
     return index_to_remove
@@ -197,35 +199,35 @@ def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     return result
 
 
-def generate_uniform_particles_data(number_of_particles, image_original):
+def generate_uniform_particles_data(number_of_particles, image_original, scale, scale_sigma):
     WalkableAreas = np.where(image_original[:, :, 0] == 0)
     WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
     return np.hstack((WalkableAreas[np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)],
-                      np.reshape(
-                          np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)])
-                          , (number_of_particles, 1)), np.ones((number_of_particles, 1), dtype=np.float64)))
+                      np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]), (number_of_particles, 1)),
+                      np.random.normal(loc=scale, scale=scale_sigma, size=(number_of_particles, 1)),
+                      np.ones((number_of_particles, 1), dtype=np.float64)))
 
 
 def Resampling(particles_data, resampling_threshold, newSize, probability_error, scale, HEIGHT, WIDTH):
     if particles_data.shape[0] <= NumberOfParticles / resampling_threshold:
-        index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, 3])
+        index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, SCORE_])
         newParticles = particles_data[index]
-        newParticles[:, 3] = newParticles[:, 3] * 0 + probability_error
+        newParticles[:, SCORE_] = newParticles[:, SCORE_] * 0 + probability_error
         newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
 
-        newParticles[:, 0] = newParticles[:, 0] + newParticlesError[:, 0]
-        newParticles[:, 1] = newParticles[:, 1] + newParticlesError[:, 1]
+        newParticles[:, Z_] = newParticles[:, Z_] + newParticlesError[:, Z_]
+        newParticles[:, X_] = newParticles[:, X_] + newParticlesError[:, X_]
         newParticles = newParticles * [1.]
         # The height and width or lower than zero
         FilteredItems = find_pixels_outside_map(newParticles, HEIGHT, WIDTH)
         newParticles = np.array([np.delete(newParticles, FilteredItems[::-1], 0)])[0]
         particles_data = np.concatenate((particles_data, newParticles), axis=0)
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
+        particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
     return particles_data
 
 
 def KDE(particles_data, KDE_model, xGrid, yGrid):
-    KDEParticles = np.vstack((particles_data[:, 0], particles_data[:, 1])).T
+    KDEParticles = np.vstack((particles_data[:, Z_], particles_data[:, X_])).T
     KDE_model.fit(KDEParticles)
     heatmap = np.reshape(np.exp(KDE_model.score_samples(np.vstack([xGrid.ravel(), yGrid.ravel()]).T)), xGrid.shape)
     plt.clf()
@@ -235,7 +237,7 @@ def KDE(particles_data, KDE_model, xGrid, yGrid):
 def GaussianHeatmap(particles_data, H, W):
     heatmap = np.zeros(shape=(H, W))
     for p in particles_data:
-        heatmap[floor(p[1]), floor(p[0])] = heatmap[floor(p[1]), floor(p[0])] + p[3]
+        heatmap[floor(p[X_]*p[SCALE_]).astype(int), floor(p[0])] = heatmap[floor(p[1]), floor(p[0])] + p[SCORE_]
     heatmap = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=10)
     # plt.clf()
     # plt.contourf(heatmap, levels=7, cmap='gnuplot', alpha=.7)
@@ -284,7 +286,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
          resampling_threshold, newSize, probability_error, KDE_model, xGrid, yGrid, loaded_model, names, colors, sz,
          TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map):
     # Create particles located on empty spaces
-    particles_data = generate_uniform_particles_data(number_of_particles, image_original)
+    particles_data = generate_uniform_particles_data(number_of_particles, image_original, scale, scale*.02)
     previousYAW = 0
     previous_X = 0
     previous_Z = 0
@@ -295,19 +297,19 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
-        X_ARKIT = ARKIT_DATA[0] * scale + offset_u
-        Z_ARKIT = ARKIT_DATA[2] * scale + offset_v
+        X_ARKIT = ARKIT_DATA[0] + offset_u / scale
+        Z_ARKIT = ARKIT_DATA[2] + offset_v / scale
         Z_ARKIT = -Z_ARKIT
         PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
-        Rot2D_theta = particles_data[:, 2] - np.pi / 2 - previousYAW
+        Rot2D_theta = particles_data[:, YAW_] - np.pi / 2 - previousYAW
         DeltaX = X_ARKIT - previous_X
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
-        particles_data[:, 0] = particles_data[:, 0] + U
-        particles_data[:, 1] = particles_data[:, 1] + V
+        particles_data[:, Z_] = particles_data[:, Z_] + U * particles_data[:, SCALE_]
+        particles_data[:, X_] = particles_data[:, X_] + V * particles_data[:, SCALE_]
 
         # This step tries to remove particles that go outside of the indoor space
         FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
@@ -316,14 +318,14 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # Next step is to remove items that go through walls in indoor space
         FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
         particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
+        particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
         # Resampling step. This step tries to counter number of particles and replace removed particles with new ones.
         particles_data = Resampling(particles_data, resampling_threshold,
                                     newSize, probability_error, scale, HEIGHT, WIDTH)
         # Remove resampled data on walls
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
         # # Update saved data
-        particles_data[:, 2] = particles_data[:, 2] + (YAW - previousYAW)
+        particles_data[:, YAW_] = particles_data[:, YAW_] + (YAW - previousYAW)
         # Object detection using YOLO
         object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
                                                          names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
@@ -337,9 +339,9 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
 
         Signs_LOS_Image = Exits_Map.copy()
         for it in xyz:
-            particles_data[it, 3] += 0.1
-            Signs_LOS_Image[int(round(particles_data[it, 1])), int(round(particles_data[it, 0]))] = (0, 0, 255)
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
+            particles_data[it, SCORE_] += 0.1
+            Signs_LOS_Image[int(round(particles_data[it, X_])), int(round(particles_data[it, Z_]))] = (0, 0, 255)
+        particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
         HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
         # KDE(particles_data, KDE_model, xGrid, yGrid)
         # -----------------------Visualization Segment------------------------
