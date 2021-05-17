@@ -194,14 +194,14 @@ def line_draw(startXY, endXY):
 def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     # The following line tries to remove new estimated particles which are out of the size of the image either greater
     # than the height and width or lower than zero
-    result = [inx for inx, items in enumerate(particles) if 0 > items[0] or items[0] > WIDTH - 1 or
-              0 > items[1] or items[1] > HEIGHT - 1]
+    result = [inx for inx, items in enumerate(particles) if 0 > items[0] or items[0]*items[SCALE_] > WIDTH - 1 or
+              0 > items[1] or items[1]*items[SCALE_] > HEIGHT - 1]
     return result
 
 
 def generate_uniform_particles_data(number_of_particles, image_original, scale, scale_sigma):
     WalkableAreas = np.where(image_original[:, :, 0] == 0)
-    WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
+    WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)/scale
     return np.hstack((WalkableAreas[np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)],
                       np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]), (number_of_particles, 1)),
                       np.random.normal(loc=scale, scale=scale_sigma, size=(number_of_particles, 1)),
@@ -209,25 +209,25 @@ def generate_uniform_particles_data(number_of_particles, image_original, scale, 
 
 
 def Resampling(particles_data, resampling_threshold, newSize, probability_error, scale, HEIGHT, WIDTH):
-    if particles_data.shape[0] <= NumberOfParticles / resampling_threshold:
-        index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, SCORE_])
-        newParticles = particles_data[index]
-        newParticles[:, SCORE_] = newParticles[:, SCORE_] * 0 + probability_error
-        newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
+    if particles_data.shape[0] > NumberOfParticles / resampling_threshold:
+        return particles_data
+    index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, SCORE_])
+    newParticles = particles_data[index]
+    newParticles[:, SCORE_] = float(newSize) ** -1
+    newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
 
-        newParticles[:, Z_] = newParticles[:, Z_] + newParticlesError[:, Z_]
-        newParticles[:, X_] = newParticles[:, X_] + newParticlesError[:, X_]
-        newParticles = newParticles * [1.]
-        # The height and width or lower than zero
-        FilteredItems = find_pixels_outside_map(newParticles, HEIGHT, WIDTH)
-        newParticles = np.array([np.delete(newParticles, FilteredItems[::-1], 0)])[0]
-        particles_data = np.concatenate((particles_data, newParticles), axis=0)
-        particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
-    return particles_data
+    newParticles[:, Z_] = newParticles[:, Z_] + newParticlesError[:, Z_]
+    newParticles[:, X_] = newParticles[:, X_] + newParticlesError[:, X_]
+
+    # The height and width or lower than zero
+    FilteredItems = find_pixels_outside_map(newParticles, HEIGHT, WIDTH)
+    newParticles = np.array([np.delete(newParticles, FilteredItems[::-1], 0)])[0]
+    newParticles[:, SCORE_] /= np.sum(newParticles[:, SCORE_])
+    return newParticles
 
 
 def KDE(particles_data, KDE_model, xGrid, yGrid):
-    KDEParticles = np.vstack((particles_data[:, Z_], particles_data[:, X_])).T
+    KDEParticles = np.vstack((particles_data[:, Z_]*particles_data[:,SCALE_], particles_data[:, X_]*particles_data[:,SCORE_])).T
     KDE_model.fit(KDEParticles)
     heatmap = np.reshape(np.exp(KDE_model.score_samples(np.vstack([xGrid.ravel(), yGrid.ravel()]).T)), xGrid.shape)
     plt.clf()
@@ -267,7 +267,7 @@ def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
 def ShowParticles(particles_data, im_particles):
     num = 0
     for particle in particles_data:
-        im_particles[int(round(particle[1])), int(round(particles_data[num, 0]))] = (0, 0, 255)
+        im_particles[round(particle[1]*particle[SCALE_]), round(particle[0]*particle[SCALE_])] = (0, 0, 255)
         num = num + 1
     return im_particles
 
@@ -277,7 +277,7 @@ def FilteringParticles(particles_data, imBinary):
     xy = []
     inx = 0
     for particle in particles_data:
-        if imBinary[int(round(particle[1])), int(round(particle[0]))] == 255:
+        if imBinary[round(particle[1]*particle[SCALE_]), round(particle[0]*particle[SCALE_])] == 255:
             xy.append(inx)
         inx = inx + 1
 
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     NumberOfParticles = 100000
     # This threshold define when to start resampling to speed up the process
     ResamplingThreshold = 5
-    NewSizeOfNumberOfParticles = int(NumberOfParticles / 2)
+    NewSizeOfNumberOfParticles = int(NumberOfParticles)
     Scale = 11.7
     Offset_U = 5.7699
     Offset_V = 18.8120
