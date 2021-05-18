@@ -313,7 +313,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
     if starting_location_flag:
         cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
     File_object = open(r"./MyFile2.csv", "w+")
-    previousYAW = 0
+    previous_RAW_YAW = 0
     previous_X = 0
     previous_Z = 0
     image_trajectory = image_original.copy()
@@ -328,17 +328,17 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
-        X_ARKIT = ARKIT_DATA[0] * scale
-        Z_ARKIT = -ARKIT_DATA[2] * scale
+        X_ARKIT = ARKIT_DATA[0]
+        Z_ARKIT = ARKIT_DATA[2]
         x_trajectory = int(round(X_ARKIT)) + user_starting_point[1]
         y_trajectory = int(round(Z_ARKIT)) + user_starting_point[0]
         image_trajectory[x_trajectory, y_trajectory] = (255, 255, 0)
 
         PITCH = ARKIT_DATA[3]
-        YAW = ARKIT_DATA[4]
+        RAW_YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
 
-        Rot2D_theta = particles_data[:, 2] - np.pi/2 - previousYAW
+        Rot2D_theta = particles_data[:, 2] - np.pi/2 - previous_RAW_YAW
         DeltaX = X_ARKIT - previous_X
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
@@ -364,7 +364,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # Remove particles on walls
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
         # Update YAW data
-        particles_data[:, 2] = particles_data[:, 2] + (YAW - previousYAW)
+        particles_data[:, 2] = particles_data[:, 2] + (RAW_YAW - previous_RAW_YAW)
         # Normalize particles probability distribution after deleting particles which go through walls
         particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Object detection using YOLO
@@ -389,7 +389,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # if particles_data.shape[0] <= NumberOfParticles / resampling_th:
         #     particles_data = Resampling(particles_data, number_of_particles)
         # -----------------------Updating Parameters--------------------------
-        previousYAW = YAW
+        previous_RAW_YAW = RAW_YAW
         previous_X = X_ARKIT
         previous_Z = Z_ARKIT
         # -----------------------Visualization Segment------------------------
@@ -481,7 +481,7 @@ if __name__ == "__main__":
     # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
     EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
     # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
-    EXITS_MAP = cv2.bitwise_not(cv2.imread('exits_' + str(flr) + '.bmp'))
+    EXITS_MAP = cv2.bitwise_not(cv2.imread('../LOS_Maps/exits_' + str(flr) + '.bmp'))
     FocalLengths = [1602]
     model_input_size = 416
     text_color_output = (0, 0, 0)
