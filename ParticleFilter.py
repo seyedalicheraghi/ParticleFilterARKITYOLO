@@ -300,8 +300,8 @@ def FilteringParticles(particles_data, imBinary):
 
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
-         resampling_th, loaded_model, names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
-         LineWidth, sign_heights, focalLength, Exit_X_Y, Exits_Map, starting_location_flag,
+         resampling_th, loaded_model, names, colors, MLModel_input_size,
+         sign_heights, focalLength, Exit_X_Y, Exits_Map, starting_location_flag,
          user_starting_point, sampling_distance):
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
@@ -362,8 +362,8 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Object detection using YOLO
         object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
-                                                         names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
-                                                         LineWidth, sign_heights, focalLength, PITCH)
+                                                         names, colors, MLModel_input_size, (0, 0, 0), 3, 9,
+                                                         sign_heights, focalLength, PITCH)
         LOS_Image = Exits_Map.copy()
         # Find particles on field of view of Exit signs and update their score to them
         if 1 in cls_num:
@@ -465,18 +465,13 @@ if __name__ == "__main__":
     # James Height:    11 I -> 0.2794 M        ----  James Width:    8.5 I ->  0.2159M
     Heights = [0.2794, 0.19685, 0.2794, 0.2794, 0.2794, 0.1143, 0.29845, 0.2794]  # Heights of signs in meters
     # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
-    EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
-    # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
+    # EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
+    EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
     EXITS_MAP = cv2.bitwise_not(cv2.imread('../LOS_Maps/exits_' + str(flr) + '.bmp'))
     FocalLengths = [1602]
     model_input_size = 416
-    text_color_output = (0, 0, 0)
-    stroke_text_width = 3
-    Line_width = 9
     # Number of particles
     NumberOfParticles = 10000
-    # Factor define number of particles
-    factor = 10
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
     img = imgOriginal.copy()
@@ -491,15 +486,10 @@ if __name__ == "__main__":
     sample_distance = 2
     # This threshold define when to start resampling to speed up the process
     ResamplingThreshold = 5
-    if initiated_flag:
-        NumberOfParticles = floor(NumberOfParticles / factor)
     Scale = 12
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
-
-    image_binary = imgOriginal.copy()[:, :, 0]
-    image_binary[image_binary > 64] = 255
-    image_binary[image_binary <= 64] = 0
     _, imgOriginal = cv2.threshold(imgOriginal, 64, 255, cv2.THRESH_BINARY)
+    image_binary = imgOriginal.copy()[:, :, 0]
     Im_HEIGHT, Im_WIDTH, dim = imgOriginal.shape
     # make imgOriginal a single-channel grayscale image if it's originally an RGB
     imageP = imgOriginal.copy()[:, :, 0] if len(imgOriginal.shape) == 3 else imgOriginal.copy()
@@ -511,6 +501,6 @@ if __name__ == "__main__":
     ListOfCameraLogImages.sort()
 
     main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH, ResamplingThreshold,
-         loadedModel, class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width,
+         loadedModel, class_names, class_colors, model_input_size,
          Heights, FocalLengths, EXITS_X_Y, EXITS_MAP, initiated_flag, user_initial_location,
          sample_distance)
