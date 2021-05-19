@@ -219,7 +219,7 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
         rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
         rnd_particles = WalkableAreas[rnd_indexes]
     rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
-                         (number_of_particles, 1)) * 0
+                         (number_of_particles, 1))
 
     probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
     probability_distribution /= np.sum(probability_distribution)
@@ -301,37 +301,29 @@ def FilteringParticles(particles_data, imBinary):
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
          resampling_th, loaded_model, names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
-         LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map, starting_location_flag,
+         LineWidth, sign_heights, focalLength, Exit_X_Y, Exits_Map, starting_location_flag,
          user_starting_point, sampling_distance):
-    frame_counter_buffer = 0
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
                                                      floor(sampling_distance * scale), starting_location_flag)
-    # image_original = np.zeros(image_original.shape, dtype=np.uint8)
-    # imgP = np.zeros(image_original.shape[0:2], dtype=np.uint8)
     imBinary = imgP.copy()
     if starting_location_flag:
         cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
-    File_object = open(r"./MyFile2.csv", "w+")
     previousYAW = 0
     previous_X = 0
     previous_Z = 0
-    image_trajectory = image_original.copy()
+    h, w, _ = image_original.shape
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
-        for item in np.sort(particles_data.view('f8,f8,f8,f8'), order=['f3'], axis=0).view(np.float):
-            File_object.writelines(str(item[0]) + ', ' + str(item[1]) + ', ' +
-                                   str(item[2]) + ', ' + str(item[3]) + '\n')
-        File_object.writelines(str(particles_data.shape) + ', ' + str(frame_counter_buffer) + '\n')
-        File_object.writelines("------------------------------------\n")
-
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
+        # Pixels to Meters
+        particles_data[:, 0] = particles_data[:, 0] / Scale
+        particles_data[:, 1] = (h - particles_data[:, 1]) / Scale
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
-        X_ARKIT = ARKIT_DATA[0] * scale
-        Z_ARKIT = -ARKIT_DATA[2] * scale
-        image_trajectory[int(round(X_ARKIT))+user_starting_point[1], int(round(Z_ARKIT))+user_starting_point[0]] = (255, 0, 255)
-
+        X_ARKIT = ARKIT_DATA[0]
+        # Y_ARKIT = ARKIT_DATA[1]
+        Z_ARKIT = ARKIT_DATA[2]
         PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
@@ -343,18 +335,17 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
 
         # Add -1 to 1 meter error to particles X and Y
-        XY_ERROR = np.random.uniform(low=-2, high=2, size=(particles_data.shape[0], 2))
+        XY_ERROR = np.random.uniform(low=-1/(4 * Scale), high=1/(4 * Scale), size=(particles_data.shape[0], 2))
         # Add -3 to 3 degree error to particles Yaw
-        YAW_ERROR = np.radians(np.random.uniform(low=-3, high=3, size=(particles_data.shape[0], 2)))
+        YAW_ERROR = np.radians(np.random.uniform(low=-0.25, high=0.25, size=(particles_data.shape[0], 2)))
         # Updating X and Y for each hypothesis
-        particles_data[:, 0] = particles_data[:, 0] + U #+ XY_ERROR[:, 0]
-        particles_data[:, 1] = particles_data[:, 1] + V #+ XY_ERROR[:, 1]
+        particles_data[:, 0] = particles_data[:, 0] + U + XY_ERROR[:, 0]
+        particles_data[:, 1] = particles_data[:, 1] + V + XY_ERROR[:, 1]
         # Updating Yaw for each hypothesis
-        particles_data[:, 2] = particles_data[:, 2] #+ YAW_ERROR[:, 0]
-
-        # Updating X and Y for each hypothesis
-        particles_data[:, 0] = particles_data[:, 0] + U
-        particles_data[:, 1] = particles_data[:, 1] + V
+        particles_data[:, 2] = particles_data[:, 2] + YAW_ERROR[:, 0]
+        # Meters to Pixels
+        particles_data[:, 0] = particles_data[:, 0] * Scale
+        particles_data[:, 1] = h - particles_data[:, 1] * Scale
 
         # This step tries to remove particles that go outside of the indoor space
         FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
@@ -384,12 +375,8 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
                 particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Resampling step. This step tries to count number of particles and replace removed particles with new ones
         # Resampling would be called only if number of particles get lower than NumberOfParticles / resampling_th
-
-        if particles_data.shape[0] is 0:
-            particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
-                                                             floor(sampling_distance * scale), False)
-        # if particles_data.shape[0] <= NumberOfParticles / resampling_th:
-        #     particles_data = Resampling(particles_data, number_of_particles)
+        if particles_data.shape[0] <= NumberOfParticles / resampling_th:
+            particles_data = Resampling(particles_data, number_of_particles)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
@@ -400,7 +387,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # Show the heatmap
         HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
         # Concatenate maps for visualization
-        Left_Col = np.concatenate((np.concatenate((image_trajectory, image_particles), axis=0),
+        Left_Col = np.concatenate((np.concatenate((image_particles, image_particles), axis=0),
                                    cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
@@ -413,13 +400,10 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         if cv2.waitKey(1) & 0xFF == 27:
             break
         plt.pause(0.000001)
-        frame_counter_buffer += 1
-    cv2.imwrite('./img_traj.bmp', image_trajectory)
 
 
 img = []
 while_flag = True
-probabilityError = 1.e-40
 # Change the flag to change modes between known or unknown starting location
 initiated_flag = True
 # This flag is responsible to pause and continue the process
@@ -483,7 +467,7 @@ if __name__ == "__main__":
     # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
     EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
     # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
-    EXITS_MAP = cv2.bitwise_not(cv2.imread('exits_' + str(flr) + '.bmp'))
+    EXITS_MAP = cv2.bitwise_not(cv2.imread('../LOS_Maps/exits_' + str(flr) + '.bmp'))
     FocalLengths = [1602]
     model_input_size = 416
     text_color_output = (0, 0, 0)
@@ -510,8 +494,6 @@ if __name__ == "__main__":
     if initiated_flag:
         NumberOfParticles = floor(NumberOfParticles / factor)
     Scale = 12
-    # Offset_U = 5.7699
-    # Offset_V = 18.8120
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
 
     image_binary = imgOriginal.copy()[:, :, 0]
@@ -530,5 +512,5 @@ if __name__ == "__main__":
 
     main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH, ResamplingThreshold,
          loadedModel, class_names, class_colors, model_input_size, text_color_output, stroke_text_width, Line_width,
-         Heights, FocalLengths, EXITS_X_Y, image_binary, EXITS_MAP, initiated_flag, user_initial_location,
+         Heights, FocalLengths, EXITS_X_Y, EXITS_MAP, initiated_flag, user_initial_location,
          sample_distance)
