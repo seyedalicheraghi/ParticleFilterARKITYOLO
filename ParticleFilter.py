@@ -235,14 +235,6 @@ def Resampling(old_particles, newSize):
     return newParticles
 
 
-def KDE(particles_data, KDE_model, xGrid, yGrid):
-    KDEParticles = np.vstack((particles_data[:, 0], particles_data[:, 1])).T
-    KDE_model.fit(KDEParticles)
-    heatmap = np.reshape(np.exp(KDE_model.score_samples(np.vstack([xGrid.ravel(), yGrid.ravel()]).T)), xGrid.shape)
-    plt.clf()
-    plt.contourf(xGrid, yGrid, heatmap, cmap='hot', alpha=.5)
-
-
 def GaussianHeatmap(particles_data, H, W):
     heatmap = np.zeros(shape=(H, W))
     XY_Columns = np.around(particles_data[:, 0:2]).astype(int)
@@ -262,6 +254,7 @@ def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
     for exits_xy in Exit_X_Y:
         mydist = np.sqrt(np.power(particles[:, 0:1] - exits_xy[0], 2) + np.power(particles[:, 1:2] - exits_xy[1], 2))
         inx = 0
+        print(r - scale, r + scale)
         for items in mydist:
             if r - scale < int(round(items[0])) < r + scale:
                 if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
@@ -277,6 +270,8 @@ def updating_detection_scores(Particles_in_LOS_Index, p_data, IMAGE_LOS):
         p_data[inx, 3] *= 2
         # For Visualization purposes
         IMAGE_LOS[int(round(p_data[inx, 1])), int(round(p_data[inx, 0]))] = (0, 0, 255)
+    # Normalize particles probability distribution
+    p_data[:, 3] /= np.sum(p_data[:, 3])
     return IMAGE_LOS, p_data
 
 
@@ -300,9 +295,8 @@ def FilteringParticles(particles_data, imBinary):
 
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
-         resampling_th, loaded_model, names, colors, MLModel_input_size,
-         sign_heights, focalLength, Exit_X_Y, Exits_Map, starting_location_flag,
-         user_starting_point, sampling_distance):
+         loaded_model, names, colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map,
+         starting_location_flag, user_starting_point, sampling_distance):
     # Create particles located on empty spaces
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
                                                      floor(sampling_distance * scale), starting_location_flag)
@@ -371,12 +365,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
             Index_Particles_LOS = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
             if len(Index_Particles_LOS) is not 0:
                 LOS_Image, particles_data = updating_detection_scores(Index_Particles_LOS, particles_data, LOS_Image)
-                # Normalize particles probability distribution
-                particles_data[:, 3] /= np.sum(particles_data[:, 3])
-        # Resampling step. This step tries to count number of particles and replace removed particles with new ones
-        # Resampling would be called only if number of particles get lower than NumberOfParticles / resampling_th
-        if particles_data.shape[0] <= NumberOfParticles / resampling_th:
-            particles_data = Resampling(particles_data, number_of_particles)
+                particles_data = Resampling(particles_data, number_of_particles)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
@@ -484,8 +473,6 @@ if __name__ == "__main__":
     cv2.destroyWindow('image')
     # Sample distance define how far from a selected starting point we need to do sampling
     sample_distance = 2
-    # This threshold define when to start resampling to speed up the process
-    ResamplingThreshold = 5
     Scale = 12
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
     _, imgOriginal = cv2.threshold(imgOriginal, 64, 255, cv2.THRESH_BINARY)
@@ -500,7 +487,6 @@ if __name__ == "__main__":
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
 
-    main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH, ResamplingThreshold,
-         loadedModel, class_names, class_colors, model_input_size,
-         Heights, FocalLengths, EXITS_X_Y, EXITS_MAP, initiated_flag, user_initial_location,
-         sample_distance)
+    main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
+         loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
+         initiated_flag, user_initial_location, sample_distance)
