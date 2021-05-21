@@ -100,8 +100,8 @@ def find_nearest_barrier(binmap, particles_XY, new_particles):
     index_to_remove = []
     h, w = binmap.shape
     for counter in range(0, len(particles_XY)):
-        x = particles_XY[counter][Z_]
-        y = particles_XY[counter][X_]
+        x = floor(particles_XY[counter][Z_]*particles_XY[counter][SCALE_])
+        y = floor(particles_XY[counter][X_]*particles_XY[counter][SCALE_])
         # access image as im[x,y] even though this is not idiomatic!
         # assume that x and y are integers
         c, s = cos(particles_XY[counter][YAW_]), sin(particles_XY[counter][YAW_])
@@ -119,7 +119,9 @@ def find_nearest_barrier(binmap, particles_XY, new_particles):
         if dist == 0:
             index_to_remove.append(counter)
         else:
-            distance = sqrt(((x - new_particles[counter][Z_]) ** 2) + ((y - new_particles[counter][X_]) ** 2))
+            xnew = floor(new_particles[counter][Z_])*new_particles[counter][SCALE_]
+            ynew = floor(new_particles[counter][X_])*new_particles[counter][SCALE_]
+            distance = sqrt(((x - xnew) ** 2) + ((y - ynew) ** 2))
             if distance > dist:
                 index_to_remove.append(counter)
     return index_to_remove
@@ -194,8 +196,8 @@ def line_draw(startXY, endXY):
 def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     # The following line tries to remove new estimated particles which are out of the size of the image either greater
     # than the height and width or lower than zero
-    result = [inx for inx, items in enumerate(particles) if 0 > items[0] or items[0]*items[SCALE_] > WIDTH - 1 or
-              0 > items[1] or items[1]*items[SCALE_] > HEIGHT - 1]
+    result = [inx for inx, items in enumerate(particles) if 0 > items[Z_] or items[Z_]*items[SCALE_] > WIDTH - 1 or
+              0 > items[X_] or items[X_]*items[SCALE_] > HEIGHT - 1]
     return result
 
 
@@ -214,7 +216,7 @@ def Resampling(particles_data, resampling_threshold, newSize, probability_error,
     index = np.random.choice(particles_data.shape[0], newSize, p=particles_data[:, SCORE_])
     newParticles = particles_data[index]
     newParticles[:, SCORE_] = float(newSize) ** -1
-    newParticlesError = np.random.uniform(low=-scale, high=scale, size=(newParticles.shape[0], 2))
+    newParticlesError = np.random.uniform(low=-3/scale, high=3/scale, size=(newParticles.shape[0], 2))
 
     newParticles[:, Z_] = newParticles[:, Z_] + newParticlesError[:, Z_]
     newParticles[:, X_] = newParticles[:, X_] + newParticlesError[:, X_]
@@ -288,6 +290,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
          resampling_threshold, newSize, probability_error, KDE_model, xGrid, yGrid, loaded_model, names, colors, sz,
          TextColorOnOutputImages, strokeTextWidth, LineWidth, sign_heights, focalLength, Exit_X_Y, imBinary, Exits_Map):
     # Create particles located on empty spaces
+    np.random.seed(seed=542014)
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, scale, scale*.02)
     previousYAW = 0
     previous_X = 0
@@ -310,8 +313,8 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
-        particles_data[:, Z_] = particles_data[:, Z_] + U * particles_data[:, SCALE_]
-        particles_data[:, X_] = particles_data[:, X_] + V * particles_data[:, SCALE_]
+        particles_data[:, Z_] = particles_data[:, Z_] + U
+        particles_data[:, X_] = particles_data[:, X_] + V
 
         # This step tries to remove particles that go outside of the indoor space
         FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
@@ -390,8 +393,8 @@ if __name__ == "__main__":
     ResamplingThreshold = 5
     NewSizeOfNumberOfParticles = int(NumberOfParticles)
     Scale = 11.7
-    Offset_U = 5.7699
-    Offset_V = 18.8120
+    Offset_U = 0#5.7699
+    Offset_V = 0#18.8120
     probabilityError = 1.e-40
 
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
