@@ -252,6 +252,46 @@ def GaussianHeatmap(particles_data, H, W):
 
 
 @jit(nopython=True)
+def PeakCandidates(pm, H, W):
+    peakCandidates = []
+    entropy = 0.0
+    for i in range(1, H-1):
+        for j in range(1, W-1):
+            if ((pm[i][j] >= pm[i-1][j-1]) and (pm[i][j] >= pm[i-1][j]) and (pm[i][j] >= pm[i-1][j+1]) and
+                (pm[i][j] >= pm[i+0][j-1]) and (pm[i][j] >= 0)          and (pm[i][j] >= pm[i+0][j+1]) and
+                (pm[i][j] >= pm[i+1][j-1]) and (pm[i][j] >= pm[i+1][j]) and (pm[i][j] >= pm[i+1][j+1]) and (
+                (pm[i][j] >  pm[i-1][j-1]) or  (pm[i][j] >  pm[i-1][j]) or  (pm[i][j] >  pm[i-1][j+1]) or
+                (pm[i][j] >  pm[i+0][j-1]) or                               (pm[i][j] >  pm[i+0][j+1]) or
+                (pm[i][j] >  pm[i+1][j-1]) or  (pm[i][j] >  pm[i+1][j]) or  (pm[i][j] >  pm[i+1][j+1]))):
+                peakCandidates.append((pm[i][j], i, j))
+        entropy -= pm[i][j] * np.log(pm[i][j])
+    return peakCandidates, entropy
+
+
+def ComputePeaks(particles_data, H, W, distTresh=10, nPeaks=2):
+    peakmap = np.zeros(shape=(H, W))
+    # Add each particle's score at the corresponding map pixel location
+    for p in particles_data:
+        x = floor(p[X_]*p[SCALE_])
+        y = floor(p[Z_]*p[SCALE_])
+        peakmap[x, y] = peakmap[x, y] + p[SCORE_]
+    # Blur the image to merge nearby hypotheses
+    peakmap = cv2.GaussianBlur(peakmap, ksize=(0, 0), sigmaX=10)
+    peakCandidates, entropy = PeakCandidates(peakmap, H, W)
+    peakCandidates.sort(reverse=True, key=lambda x: x[0])
+    peakList = []
+    for candidate in peakCandidates:
+        peakOK = True
+        for peak in peakList:
+            dist = sqrt((candidate[1]-peak[1])**2+(candidate[2]-peak[2])**2)
+            if dist < distTresh:
+                peakOK = False
+                break
+        if peakOK: peakList.append(candidate)
+        if len(peakList) >= nPeaks: break
+    return peakList, entropy
+
+@jit(nopython=True)
 def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
     xy = []
     for exits_xy in Exit_X_Y:
@@ -269,9 +309,31 @@ def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
 def ShowParticles(particles_data, im_particles):
     num = 0
     for particle in particles_data:
-        im_particles[round(particle[1]*particle[SCALE_]), round(particle[0]*particle[SCALE_])] = (0, 0, 255)
+        im_particles[floor(particle[X_]*particle[SCALE_]), floor(particle[Z_]*particle[SCALE_])] = (0, 0, 255)
         num = num + 1
     return im_particles
+
+
+def ShowPeaks(peakList, im_peak, nPeaks=1, color=(0, 255, 0)):
+    for i in range(min(nPeaks, len(peakList))):
+        x, y = floor(peakList[i][1]), floor(peakList[i][2])
+        im_peak[x-1, y] = color
+        im_peak[x, y] = color
+        im_peak[x+1, y] = color
+        im_peak[x, y-1] = color
+        im_peak[x, y+1] = color
+
+    return im_peak
+
+
+def DrawPeaks(peakList, im_peak, nPeaks=1):
+    imgPeak = Image.fromarray(im_peak)
+    drawpeak = ImageDraw.Draw(imgPeak)
+    for i in range(min(nPeaks, len(peakList))):
+        x, y = floor(peakList[i][2]), floor(peakList[i][1])
+        drawpeak.line((x, y-1, x, y+1), fill=(0, 255, 0), width=1)
+        drawpeak.line((x-1, y, x+1, y), fill=(0, 255, 0), width=1)
+    return im_peak
 
 
 @jit(nopython=True)
@@ -279,7 +341,7 @@ def FilteringParticles(particles_data, imBinary):
     xy = []
     inx = 0
     for particle in particles_data:
-        if imBinary[round(particle[1]*particle[SCALE_]), round(particle[0]*particle[SCALE_])] == 255:
+        if imBinary[floor(particle[1]*particle[SCALE_]), floor(particle[0]*particle[SCALE_])] == 255:
             xy.append(inx)
         inx = inx + 1
 
@@ -336,7 +398,6 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
                                                          names, colors, sz, TextColorOnOutputImages, strokeTextWidth,
                                                          LineWidth, sign_heights, focalLength, PITCH)
 
-        image_particles = ShowParticles(particles_data, image_particles.copy())
         xyz = []
         if 1 in cls_num:
             radius_to_sign = int(round(scale * dist_to_sign[cls_num.index(1)]))
@@ -347,13 +408,22 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
             particles_data[it, SCORE_] += 0.1
             Signs_LOS_Image[int(round(particles_data[it, X_])), int(round(particles_data[it, Z_]))] = (0, 0, 255)
         particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
+        # Find peaks
+        peakList, entropy = ComputePeaks(particles_data, HEIGHT, WIDTH, distTresh=12, nPeaks=30)
         HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
+        image_heatmap = cv2.merge((HEATMAP, HEATMAP, HEATMAP))
+
+        image_particles = ShowParticles(particles_data, image_particles.copy())
+        image_particles = ShowPeaks(peakList, image_particles, 1)
+        image_heatmap = ShowPeaks(peakList, image_heatmap, 100)
+        image_heatmap = ShowPeaks(peakList, image_heatmap, 1, (0, 0, 255))
+
         # KDE(particles_data, KDE_model, xGrid, yGrid)
         # -----------------------Visualization Segment------------------------
 
-        # concatanate image Horizontally
+        # concatenate image Horizontally
         Left_Col = np.concatenate((np.concatenate((Signs_LOS_Image, image_particles), axis=0),
-                                  cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
+                                  image_heatmap), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
         output = np.hstack((Left_Col, Right_Col))
