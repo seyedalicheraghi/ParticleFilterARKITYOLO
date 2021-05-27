@@ -88,7 +88,7 @@ def mapping(imBinary, imgOriginal, EXITS_X_Y, image_matrix, accuracy):
     return image_matrix
 
 
-flr = 2
+flr = 4
 path_to_map = '../maps/walls_' + str(flr) + '.bmp'
 # EXIT_XY = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Floor
 # EXIT_XY = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Floor user_selection_3.bmp

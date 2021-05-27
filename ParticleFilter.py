@@ -429,7 +429,7 @@ def mouse_click(event, x, y, flags, param):
 
 
 if __name__ == "__main__":
-    flr = 2
+    flr = 4
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
@@ -447,14 +447,14 @@ if __name__ == "__main__":
     # Six Feet Height: 11 I -> 0.2794 M        ----  FaceMask Width: 8.5 I ->  0.2159M
     # James Height:    11 I -> 0.2794 M        ----  James Width:    8.5 I ->  0.2159M
     Heights = [0.2794, 0.19685, 0.2794, 0.2794, 0.2794, 0.1143, 0.29845, 0.2794]  # Heights of signs in meters
-    # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
+    EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
     # EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
-    EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
+    # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
     EXITS_MAP = cv2.bitwise_not(cv2.imread('../LOS_Maps/exits_' + str(flr) + '.bmp'))
     FocalLengths = [1602]
     model_input_size = 416
-    # Number of particles
     NumberOfParticles = 10000
+    # Number of particles
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
     img = imgOriginal.copy()
