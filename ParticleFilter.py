@@ -11,6 +11,8 @@ np.set_printoptions(precision=40)
 np.set_printoptions(threshold=3)
 np.set_printoptions(suppress=True)
 
+# Constant variables to describe particle data array index
+Z_ = 0; X_ = 1; YAW_ = 2; SCALE_ = 4; SCORE_ = 3
 
 def rangeZ(h0, gamma, alpha, delta):
     return h0 / (tan(gamma + alpha + delta) - tan(gamma + alpha))
@@ -93,15 +95,44 @@ def XYZ_pitch_yaw_roll(imagesName, ARKIT):
 
 
 @jit(nopython=True)
+def findInvalidSteps(wallmap, oldParticles, newParticles):
+    HEIGHT, WIDTH = wallmap.shape
+    index_to_remove = []
+    # Iterate through each particle to see if it is outside boundaries or crosses a wall
+    for idx in range(len(newParticles)):
+        oldRow = floor(oldParticles[idx, X_])
+        newRow = floor(newParticles[idx, X_])
+        oldCol = floor(oldParticles[idx, Z_])
+        newCol = floor(newParticles[idx, Z_])
+        if 0 > newCol or newCol > WIDTH - 1 or 0 > newRow or newRow > HEIGHT - 1:
+            index_to_remove.append(idx)
+            continue
+        pixsteps = round(max(abs(newRow-oldRow), abs(newCol-oldCol)))
+        safe_denom = max(pixsteps, 1)
+        for step in range(pixsteps+1):
+            Row = int(oldRow + ((newRow-oldRow)/safe_denom)*step)
+            Col = int(oldCol + ((newCol-oldCol)/safe_denom)*step)
+            if wallmap[Row, Col] > 0:
+                index_to_remove.append(idx)
+                break
+    # #DISABLED DUE TO NUMBA COMPATIBILITY
+    #        Xs = np.linspace(oldPos[X_], newPos[X_], pixsteps, dtype=int)
+    #        Zs = np.linspace(oldPos[Z_], newPos[Z_], pixsteps, dtype=int)
+    #        if sum(wallmap[Xs, Zs]) > 0:
+    #            index_to_remove.append(idx)
+    return index_to_remove
+
+
+@jit(nopython=True)
 def find_nearest_barrier(binmap, particles_XY, new_particles):
     index_to_remove = []
     h, w = binmap.shape
     for counter in range(0, len(particles_XY)):
-        x = particles_XY[counter][0]
-        y = particles_XY[counter][1]
+        x = particles_XY[counter][Z_]
+        y = particles_XY[counter][X_]
         # access image as im[x,y] even though this is not idiomatic!
         # assume that x and y are integers
-        c, s = cos(particles_XY[counter][2]), sin(particles_XY[counter][2])
+        c, s = cos(particles_XY[counter][YAW_]), sin(particles_XY[counter][YAW_])
         cnt = 0
         hit = False
         while not hit:
@@ -116,7 +147,9 @@ def find_nearest_barrier(binmap, particles_XY, new_particles):
         if dist == 0:
             index_to_remove.append(counter)
         else:
-            distance = sqrt(((x - new_particles[counter][0]) ** 2) + ((y - new_particles[counter][1]) ** 2))
+            xnew = floor(new_particles[counter][Z_])
+            ynew = floor(new_particles[counter][X_])
+            distance = sqrt(((x - xnew) ** 2) + ((y - ynew) ** 2))
             if distance > dist:
                 index_to_remove.append(counter)
     return index_to_remove
@@ -191,13 +224,13 @@ def line_draw(startXY, endXY):
 def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     # The following line tries to remove new estimated particles which are out of the size of the image either greater
     # than the height and width or lower than zero
-    result = [inx for inx, items in enumerate(particles) if 0 > items[0] or items[0] > WIDTH - 1 or
-              0 > items[1] or items[1] > HEIGHT - 1]
+    result = [inx for inx, items in enumerate(particles) if 0 > items[Z_] or items[Z_] > WIDTH - 1 or
+              0 > items[X_] or items[X_] > HEIGHT - 1]
     return result
 
 
-def generate_uniform_particles_data(number_of_particles, image_original, starting_point, R, flag):
-    if not flag:
+def generate_uniform_particles_data(number_of_particles, image_original, starting_point, R, start_flag, yawflag):
+    if not start_flag:
         WalkableAreas = np.where(image_original[:, :, 0] == 0)
         WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
         rnd_indexes = np.random.choice(WalkableAreas.shape[0], number_of_particles, replace=True)
@@ -214,7 +247,9 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
         rnd_particles = WalkableAreas[rnd_indexes]
     rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
                          (number_of_particles, 1))
-
+    if yawflag >= 0:
+        rnd_yaw = rnd_yaw * 0 + yawflag
+        print(f"Setting initial yaw to {yawflag}.\n")
     probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
     probability_distribution /= np.sum(probability_distribution)
     output_particles = np.hstack((rnd_particles, rnd_yaw, probability_distribution))
@@ -222,17 +257,18 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
 
 
 def Resampling(old_particles, newSize):
-    index = np.random.choice(old_particles.shape[0], newSize, p=old_particles[:, 3])
+    index = np.random.choice(old_particles.shape[0], newSize, p=old_particles[:, SCORE_])
     newParticles = old_particles[index] * [1.]
-    newParticles[:, 3] = 1
-    newParticles[:, 3] /= np.sum(newParticles[:, 3])
+    newParticles[:, SCORE_] = float(newSize) ** -1
     return newParticles
 
 
 def GaussianHeatmap(particles_data, H, W):
     heatmap = np.zeros(shape=(H, W))
     for p in particles_data:
-        heatmap[floor(p[1]), floor(p[0])] = heatmap[floor(p[1]), floor(p[0])] + p[3]
+        r = floor(p[X_])
+        c = floor(p[Z_])
+        heatmap[r, c] = heatmap[r, c] + p[SCORE_]
     heatmap = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=10)
     # plt.clf()
     # plt.contourf(heatmap, levels=7, cmap='gnuplot', alpha=.7)
@@ -243,12 +279,53 @@ def GaussianHeatmap(particles_data, H, W):
 
 
 @jit(nopython=True)
+def PeakCandidates(pm, H, W):
+    peakCandidates = []
+    entropy = 0.0
+    for i in range(1, H-1):
+        for j in range(1, W-1):
+            if ((pm[i][j] >= pm[i-1][j-1]) and (pm[i][j] >= pm[i-1][j]) and (pm[i][j] >= pm[i-1][j+1]) and
+                (pm[i][j] >= pm[i+0][j-1]) and (pm[i][j] >= 0)          and (pm[i][j] >= pm[i+0][j+1]) and
+                (pm[i][j] >= pm[i+1][j-1]) and (pm[i][j] >= pm[i+1][j]) and (pm[i][j] >= pm[i+1][j+1]) and (
+                (pm[i][j] >  pm[i-1][j-1]) or  (pm[i][j] >  pm[i-1][j]) or  (pm[i][j] >  pm[i-1][j+1]) or
+                (pm[i][j] >  pm[i+0][j-1]) or                               (pm[i][j] >  pm[i+0][j+1]) or
+                (pm[i][j] >  pm[i+1][j-1]) or  (pm[i][j] >  pm[i+1][j]) or  (pm[i][j] >  pm[i+1][j+1]))):
+                peakCandidates.append((pm[i][j], i, j))
+        entropy -= pm[i][j] * np.log(pm[i][j])
+    return peakCandidates, entropy
+
+
+def ComputePeaks(particles_data, H, W, distTresh=10, nPeaks=2):
+    peakmap = np.zeros(shape=(H, W))
+    # Add each particle's score at the corresponding map pixel location
+    for p in particles_data:
+        x = floor(p[X_])
+        y = floor(p[Z_])
+        peakmap[x, y] = peakmap[x, y] + p[SCORE_]
+    # Blur the image to merge nearby hypotheses
+    peakmap = cv2.GaussianBlur(peakmap, ksize=(0, 0), sigmaX=10)
+    peakCandidates, entropy = PeakCandidates(peakmap, H, W)
+    peakCandidates.sort(reverse=True, key=lambda x: x[0])
+    peakList = []
+    for candidate in peakCandidates:
+        peakOK = True
+        for peak in peakList:
+            dist = sqrt((candidate[1]-peak[1])**2+(candidate[2]-peak[2])**2)
+            if dist < distTresh:
+                peakOK = False
+                break
+        if peakOK: peakList.append(candidate)
+        if len(peakList) >= nPeaks: break
+    return peakList, entropy
+
+
+@jit(nopython=True)
 def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
     particle_index = []
     for exits_xy in Exit_X_Y:
         mydist = np.sqrt(np.power(particles[:, 0:1] - exits_xy[0], 2) + np.power(particles[:, 1:2] - exits_xy[1], 2))
         inx = 0
-        print(r - scale, r + scale)
+        #print(r - scale, r + scale)
         for items in mydist:
             if r - scale < int(round(items[0])) < r + scale:
                 if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
@@ -276,6 +353,28 @@ def ShowParticles(particles_data, im_particles):
     return im_particles
 
 
+def ShowPeaks(peakList, im_peak, nPeaks=1, color=(0, 255, 0)):
+    for i in range(min(nPeaks, len(peakList))):
+        x, y = floor(peakList[i][1]), floor(peakList[i][2])
+        im_peak[x-1, y] = color
+        im_peak[x, y] = color
+        im_peak[x+1, y] = color
+        im_peak[x, y-1] = color
+        im_peak[x, y+1] = color
+
+    return im_peak
+
+
+def DrawPeaks(peakList, im_peak, nPeaks=1):
+    imgPeak = Image.fromarray(im_peak)
+    drawpeak = ImageDraw.Draw(imgPeak)
+    for i in range(min(nPeaks, len(peakList))):
+        x, y = floor(peakList[i][2]), floor(peakList[i][1])
+        drawpeak.line((x, y-1, x, y+1), fill=(0, 255, 0), width=1)
+        drawpeak.line((x-1, y, x+1, y), fill=(0, 255, 0), width=1)
+    return im_peak
+
+
 @jit(nopython=True)
 def FilteringParticles(particles_data, imBinary):
     xy = []
@@ -290,10 +389,11 @@ def FilteringParticles(particles_data, imBinary):
 
 def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
          loaded_model, names, colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map,
-         starting_location_flag, user_starting_point, sampling_distance):
+         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=-1, radseed=542014):
     # Create particles located on empty spaces
+    np.random.seed(radseed)
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
-                                                     floor(sampling_distance * scale), starting_location_flag)
+                                                     floor(sampling_distance * scale), starting_location_flag, yaw_flag)
     imBinary = imgP.copy()
     if starting_location_flag:
         cv2.circle(image_original, center=user_starting_point, color=(0, 255, 0), thickness=-1, radius=3)
@@ -301,13 +401,14 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
     previous_X = 0
     previous_Z = 0
     h, w, _ = image_original.shape
+    trajectory = []
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
         image_particles = image_original.copy()
         old_particles_data = particles_data.copy()
         # Pixels to Meters
-        particles_data[:, 0] = particles_data[:, 0] / Scale
-        particles_data[:, 1] = (h - particles_data[:, 1]) / Scale
+        particles_data[:, Z_] = particles_data[:, Z_] / Scale
+        particles_data[:, X_] = (h - particles_data[:, X_]) / Scale
         ARKIT_DATA = XYZ_pitch_yaw_roll(str(CameraLogImage), ARKIT_LOGGED)
         X_ARKIT = ARKIT_DATA[0]
         # Y_ARKIT = ARKIT_DATA[1]
@@ -316,14 +417,14 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
 
-        Rot2D_theta = particles_data[:, 2] - np.pi/2 - previousYAW
+        Rot2D_theta = particles_data[:, YAW_] - np.pi/2 - previousYAW
         DeltaX = X_ARKIT - previous_X
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
 
         # Add -1 to 1 meter error to particles X and Y
-        XY_ERROR = np.random.uniform(low=-1/(4 * Scale), high=1/(4 * Scale), size=(particles_data.shape[0], 2))
+        XY_ERROR = np.random.uniform(low=-2/(4 * Scale), high=2/(4 * Scale), size=(particles_data.shape[0], 2))
         # Add -3 to 3 degree error to particles Yaw
         YAW_ERROR = np.radians(np.random.uniform(low=-0.25, high=0.25, size=(particles_data.shape[0], 2)))
         # Updating X and Y for each hypothesis
@@ -335,15 +436,19 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         particles_data[:, 0] = particles_data[:, 0] * Scale
         particles_data[:, 1] = h - particles_data[:, 1] * Scale
 
-        # This step tries to remove particles that go outside of the indoor space
-        FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
-        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-        old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
-        # This step tries to remove particles that go through walls in indoor space
-        FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
-        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-        # Remove particles on walls
+#        # This step tries to remove particles that go outside of the indoor space
+#        FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
+#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
+#        old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
+#        # This step tries to remove particles that go through walls in indoor space
+#        FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
+#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
+#        # Remove particles on walls
+#        particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
+        # Remove particles landing outside the space or stepping through a wall
+        particles_data = np.delete(particles_data, findInvalidSteps(imBinary, old_particles_data, particles_data), 0)
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
+
         # Update YAW data
         particles_data[:, 2] = particles_data[:, 2] + (YAW - previousYAW)
         # Normalize particles probability distribution after deleting particles which go through walls
@@ -367,11 +472,25 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # -----------------------Visualization Segment------------------------
         # Show particles on the map
         image_particles = ShowParticles(particles_data, image_particles.copy())
-        # Show the heatmap
+
+        # Find peaks
+        peakList, entropy = ComputePeaks(particles_data, HEIGHT, WIDTH, distTresh=12, nPeaks=30)
+        if len(peakList) < 1:
+            trajectory.append([0, 0])
+        else:
+            trajectory.append(peakList[0])
+
+        # Generate the heat map for display
         HEATMAP = GaussianHeatmap(particles_data, HEIGHT, WIDTH)
+        image_heatmap = cv2.merge((HEATMAP, HEATMAP, HEATMAP))
+
+        image_particles = ShowPeaks(peakList, image_particles, 1)
+        image_heatmap = ShowPeaks(peakList, image_heatmap, 100)
+        image_heatmap = ShowPeaks(peakList, image_heatmap, 1, (0, 0, 255))
+
         # Concatenate maps for visualization
-        Left_Col = np.concatenate((np.concatenate((image_particles, image_particles), axis=0),
-                                   cv2.merge((HEATMAP, HEATMAP, HEATMAP))), axis=0)
+        Left_Col = np.concatenate((np.concatenate((LOS_Image, image_particles), axis=0),
+                                   image_heatmap), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
         output = np.hstack((Left_Col, Right_Col))
@@ -383,7 +502,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         if cv2.waitKey(1) & 0xFF == 27:
             break
         plt.pause(0.000001)
-
+    return trajectory
 
 img = []
 while_flag = True
@@ -409,6 +528,7 @@ def mouse_click(event, x, y, flags, param):
             cv2.circle(img, (x, y), radius=2, color=(255, 255, 0), thickness=3)
             cv2.imshow('image', img)
             user_initial_location = (x, y)
+            print(f"Initial location at: ({x}, {y}).\n")
             while_flag = False
             initiated_flag = True
             control_flag = True
@@ -468,6 +588,7 @@ if __name__ == "__main__":
     # Sample distance define how far from a selected starting point we need to do sampling
     sample_distance = 2
     Scale = 12
+    randseed = 542014
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
     _, imgOriginal = cv2.threshold(imgOriginal, 64, 255, cv2.THRESH_BINARY)
     image_binary = imgOriginal.copy()[:, :, 0]
@@ -481,6 +602,27 @@ if __name__ == "__main__":
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
 
-    main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
+    # Build Ground Truth
+    gt = main(imgOriginal, imageP, 10000, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
          loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
-         initiated_flag, user_initial_location, sample_distance)
+         initiated_flag, user_initial_location, sample_distance, 0, randseed)
+
+    # test harness loop
+    ntrials = 1
+    yawflag = -1
+    trajectoryDistThresh = 1 # meters away from ground truth peaks must be to count correct
+    convergetime = []
+    np.random.seed(randseed)
+    randseeds = (np.random.randint(low=1, high=1000000, size=ntrials))
+    for trial in range(ntrials):
+        peakpath = main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
+                        loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y,
+                        EXITS_MAP, False, user_initial_location, sample_distance, yawflag, randseeds[trial])
+        for step in reversed(range(len(peakpath))):
+            dist = sqrt((gt[step][0]-peakpath[step][0])**2 + (gt[step][1]-peakpath[step][1])**2)
+            if dist > Scale*trajectoryDistThresh:
+                convergetime.append(step)
+                break
+    meanconv = sum(convergetime)/len(convergetime)
+    print(f"Over {ntrials} trials, the average time for peak to converge correctly is {meanconv}.\n")
+    print(f"It converged {len(convergetime)} times out of {ntrials} trials.\n")
