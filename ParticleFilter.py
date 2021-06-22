@@ -13,6 +13,9 @@ np.set_printoptions(suppress=True)
 
 # Constant variables to describe particle data array index
 Z_ = 0; X_ = 1; YAW_ = 2; SCALE_ = 4; SCORE_ = 3
+# String constants used for filenames
+IMAGE_EXTENSION = '.jpg'
+
 
 def rangeZ(h0, gamma, alpha, delta):
     return h0 / (tan(gamma + alpha + delta) - tan(gamma + alpha))
@@ -107,19 +110,21 @@ def findInvalidSteps(wallmap, oldParticles, newParticles):
         if 0 > newCol or newCol > WIDTH - 1 or 0 > newRow or newRow > HEIGHT - 1:
             index_to_remove.append(idx)
             continue
-        pixsteps = round(max(abs(newRow-oldRow), abs(newCol-oldCol)))
-        safe_denom = max(pixsteps, 1)
-        for step in range(pixsteps+1):
-            Row = int(oldRow + ((newRow-oldRow)/safe_denom)*step)
-            Col = int(oldCol + ((newCol-oldCol)/safe_denom)*step)
-            if wallmap[Row, Col] > 0:
+        pixsteps = max(abs(newRow-oldRow), abs(newCol-oldCol))
+    #    safe_denom = max(pixsteps, 1)
+    #    for step in range(pixsteps+1):
+    #        Row = int(oldRow + ((newRow-oldRow)/safe_denom)*step)
+    #        Col = int(oldCol + ((newCol-oldCol)/safe_denom)*step)
+    #        if wallmap[Row, Col] > 0:
+    #            index_to_remove.append(idx)
+    #            break
+     #DISABLED DUE TO NUMBA COMPATIBILITY
+        Xs = np.linspace(oldRow, newRow, pixsteps+1).astype(np.int32)
+        Zs = np.linspace(oldCol, newCol, pixsteps+1).astype(np.int32)
+        for i in range(len(Xs)):
+            if wallmap[Xs[i], Zs[i]] > 0:
                 index_to_remove.append(idx)
                 break
-    # #DISABLED DUE TO NUMBA COMPATIBILITY
-    #        Xs = np.linspace(oldPos[X_], newPos[X_], pixsteps, dtype=int)
-    #        Zs = np.linspace(oldPos[Z_], newPos[Z_], pixsteps, dtype=int)
-    #        if sum(wallmap[Xs, Zs]) > 0:
-    #            index_to_remove.append(idx)
     return index_to_remove
 
 
@@ -229,7 +234,7 @@ def find_pixels_outside_map(particles, HEIGHT, WIDTH):
     return result
 
 
-def generate_uniform_particles_data(number_of_particles, image_original, starting_point, R, start_flag, yawflag):
+def generate_uniform_particles_data(number_of_particles, image_original, starting_point, R, start_flag, start_yaw):
     if not start_flag:
         WalkableAreas = np.where(image_original[:, :, 0] == 0)
         WalkableAreas = np.transpose((WalkableAreas[1], WalkableAreas[0])).astype(float)
@@ -247,9 +252,9 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
         rnd_particles = WalkableAreas[rnd_indexes]
     rnd_yaw = np.reshape(np.array([radians(hd) for hd in np.random.uniform(-180, 180, size=number_of_particles)]),
                          (number_of_particles, 1))
-    if yawflag >= 0:
-        rnd_yaw = rnd_yaw * 0 + yawflag
-        print(f"Setting initial yaw to {yawflag}.\n")
+    if start_yaw is not None:
+        rnd_yaw = rnd_yaw * 0 + start_yaw
+        print(f"Setting initial yaw to {start_yaw}.\n")
     probability_distribution = np.ones((number_of_particles, 1), dtype=np.float64)
     probability_distribution /= np.sum(probability_distribution)
     output_particles = np.hstack((rnd_particles, rnd_yaw, probability_distribution))
@@ -259,7 +264,7 @@ def generate_uniform_particles_data(number_of_particles, image_original, startin
 def Resampling(old_particles, newSize):
     index = np.random.choice(old_particles.shape[0], newSize, p=old_particles[:, SCORE_])
     newParticles = old_particles[index] * [1.]
-    newParticles[:, SCORE_] = float(newSize) ** -1
+    newParticles[:, SCORE_] = 1.0/float(newSize)
     return newParticles
 
 
@@ -387,11 +392,11 @@ def FilteringParticles(particles_data, imBinary):
     return xy
 
 
-def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
+def main(image_original, imgP, number_of_particles, PATH, list_of_cameraLog_images, ARKIT_LOGGED, scale, HEIGHT, WIDTH,
          loaded_model, names, colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map,
-         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=-1, radseed=542014):
+         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=None, randseed=542014):
     # Create particles located on empty spaces
-    np.random.seed(radseed)
+    np.random.seed(randseed)
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
                                                      floor(sampling_distance * scale), starting_location_flag, yaw_flag)
     imBinary = imgP.copy()
@@ -402,6 +407,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
     previous_Z = 0
     h, w, _ = image_original.shape
     trajectory = []
+    Scale = scale
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
         image_particles = image_original.copy()
@@ -436,15 +442,6 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         particles_data[:, 0] = particles_data[:, 0] * Scale
         particles_data[:, 1] = h - particles_data[:, 1] * Scale
 
-#        # This step tries to remove particles that go outside of the indoor space
-#        FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
-#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-#        old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
-#        # This step tries to remove particles that go through walls in indoor space
-#        FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
-#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-#        # Remove particles on walls
-#        particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
         # Remove particles landing outside the space or stepping through a wall
         particles_data = np.delete(particles_data, findInvalidSteps(imBinary, old_particles_data, particles_data), 0)
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
@@ -512,7 +509,9 @@ initiated_flag = True
 control_flag = False
 # This section tries to assign starting location of the user
 user_initial_location = (94, 47)
-
+# This flag controls whether to run testing by building/loading a ground truth trajectory and
+# running over specified test conditions
+ground_truth_flag = False
 
 # define the events for the mouse_click.
 def mouse_click(event, x, y, flags, param):
@@ -551,7 +550,6 @@ def mouse_click(event, x, y, flags, param):
 if __name__ == "__main__":
     flr = 4
     PATH = "../LoggedData/trial" + str(flr) + "/"
-    IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
     model_name = '8NMMY2NC15k.mlmodel'
     class_names = ['Safety', 'Exit', 'FaceMask', 'James', 'Caution', 'RedFire', 'Restroom', 'SixFt']
@@ -596,33 +594,11 @@ if __name__ == "__main__":
     # make imgOriginal a single-channel grayscale image if it's originally an RGB
     imageP = imgOriginal.copy()[:, :, 0] if len(imgOriginal.shape) == 3 else imgOriginal.copy()
     # Read the TXT ARKIT data
-    ARKIT_LOGGED = [x.strip() for x in open(glob.glob(PATH + "*.txt")[0], "r")]
+    ARKITLOG = [x.strip() for x in open(glob.glob(PATH + "*.txt")[0], "r")]
     # Read Images and sort them
     ListOfCameraLogImages = [int(file.split('/')[len(file.split('/')) - 1].replace(IMAGE_EXTENSION, ''))
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
-
-    # Build Ground Truth
-    gt = main(imgOriginal, imageP, 10000, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
-         loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
-         initiated_flag, user_initial_location, sample_distance, 0, randseed)
-
-    # test harness loop
-    ntrials = 1
-    yawflag = -1
-    trajectoryDistThresh = 1 # meters away from ground truth peaks must be to count correct
-    convergetime = []
-    np.random.seed(randseed)
-    randseeds = (np.random.randint(low=1, high=1000000, size=ntrials))
-    for trial in range(ntrials):
-        peakpath = main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
-                        loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y,
-                        EXITS_MAP, False, user_initial_location, sample_distance, yawflag, randseeds[trial])
-        for step in reversed(range(len(peakpath))):
-            dist = sqrt((gt[step][0]-peakpath[step][0])**2 + (gt[step][1]-peakpath[step][1])**2)
-            if dist > Scale*trajectoryDistThresh:
-                convergetime.append(step)
-                break
-    meanconv = sum(convergetime)/len(convergetime)
-    print(f"Over {ntrials} trials, the average time for peak to converge correctly is {meanconv}.\n")
-    print(f"It converged {len(convergetime)} times out of {ntrials} trials.\n")
+    _ = main(imgOriginal, imageP, NumberOfParticles, PATH, ListOfCameraLogImages, ARKITLOG, Scale, Im_HEIGHT, Im_WIDTH,
+             loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
+             initiated_flag, user_initial_location, sample_distance, -1, randseed)
