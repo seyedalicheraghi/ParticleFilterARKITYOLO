@@ -6,13 +6,19 @@ from math import sin, cos, sqrt, pi, radians, acos, tan, floor
 import matplotlib.pyplot as plt
 import coremltools
 from PIL import Image, ImageDraw, ImageFont
+import tkinter as tk
 
 np.set_printoptions(precision=40)
 np.set_printoptions(threshold=3)
 np.set_printoptions(suppress=True)
 
 # Constant variables to describe particle data array index
-Z_ = 0; X_ = 1; YAW_ = 2; SCALE_ = 4; SCORE_ = 3
+Z_ = 0
+X_ = 1
+YAW_ = 2
+SCALE_ = 4
+SCORE_ = 3
+
 
 def rangeZ(h0, gamma, alpha, delta):
     return h0 / (tan(gamma + alpha + delta) - tan(gamma + alpha))
@@ -89,8 +95,8 @@ def XYZ_pitch_yaw_roll(imagesName, ARKIT):
     # read the CoreML txt file
     for items in range(0, len(ARKIT)):
         if ARKIT[items].strip() == imagesName.strip():
-            [x, y, z] = [float(x) for x in ARKIT[items+4].split(',')]
-            [pitch, yaw, roll] = [float(x) for x in ARKIT[items+5].split('(')[1].strip(')').split(',')]
+            [x, y, z] = [float(x) for x in ARKIT[items + 4].split(',')]
+            [pitch, yaw, roll] = [float(x) for x in ARKIT[items + 5].split('(')[1].strip(')').split(',')]
             return x, y, z, pitch, yaw, roll
 
 
@@ -107,11 +113,11 @@ def findInvalidSteps(wallmap, oldParticles, newParticles):
         if 0 > newCol or newCol > WIDTH - 1 or 0 > newRow or newRow > HEIGHT - 1:
             index_to_remove.append(idx)
             continue
-        pixsteps = round(max(abs(newRow-oldRow), abs(newCol-oldCol)))
+        pixsteps = round(max(abs(newRow - oldRow), abs(newCol - oldCol)))
         safe_denom = max(pixsteps, 1)
-        for step in range(pixsteps+1):
-            Row = int(oldRow + ((newRow-oldRow)/safe_denom)*step)
-            Col = int(oldCol + ((newCol-oldCol)/safe_denom)*step)
+        for step in range(pixsteps + 1):
+            Row = int(oldRow + ((newRow - oldRow) / safe_denom) * step)
+            Col = int(oldCol + ((newCol - oldCol) / safe_denom) * step)
             if wallmap[Row, Col] > 0:
                 index_to_remove.append(idx)
                 break
@@ -282,14 +288,17 @@ def GaussianHeatmap(particles_data, H, W):
 def PeakCandidates(pm, H, W):
     peakCandidates = []
     entropy = 0.0
-    for i in range(1, H-1):
-        for j in range(1, W-1):
-            if ((pm[i][j] >= pm[i-1][j-1]) and (pm[i][j] >= pm[i-1][j]) and (pm[i][j] >= pm[i-1][j+1]) and
-                (pm[i][j] >= pm[i+0][j-1]) and (pm[i][j] >= 0)          and (pm[i][j] >= pm[i+0][j+1]) and
-                (pm[i][j] >= pm[i+1][j-1]) and (pm[i][j] >= pm[i+1][j]) and (pm[i][j] >= pm[i+1][j+1]) and (
-                (pm[i][j] >  pm[i-1][j-1]) or  (pm[i][j] >  pm[i-1][j]) or  (pm[i][j] >  pm[i-1][j+1]) or
-                (pm[i][j] >  pm[i+0][j-1]) or                               (pm[i][j] >  pm[i+0][j+1]) or
-                (pm[i][j] >  pm[i+1][j-1]) or  (pm[i][j] >  pm[i+1][j]) or  (pm[i][j] >  pm[i+1][j+1]))):
+    for i in range(1, H - 1):
+        for j in range(1, W - 1):
+            if ((pm[i][j] >= pm[i - 1][j - 1]) and (pm[i][j] >= pm[i - 1][j]) and (pm[i][j] >= pm[i - 1][j + 1]) and
+                    (pm[i][j] >= pm[i + 0][j - 1]) and (pm[i][j] >= 0) and (pm[i][j] >= pm[i + 0][j + 1]) and
+                    (pm[i][j] >= pm[i + 1][j - 1]) and (pm[i][j] >= pm[i + 1][j]) and (
+                            pm[i][j] >= pm[i + 1][j + 1]) and (
+                            (pm[i][j] > pm[i - 1][j - 1]) or (pm[i][j] > pm[i - 1][j]) or (
+                            pm[i][j] > pm[i - 1][j + 1]) or
+                            (pm[i][j] > pm[i + 0][j - 1]) or (pm[i][j] > pm[i + 0][j + 1]) or
+                            (pm[i][j] > pm[i + 1][j - 1]) or (pm[i][j] > pm[i + 1][j]) or (
+                                    pm[i][j] > pm[i + 1][j + 1]))):
                 peakCandidates.append((pm[i][j], i, j))
         entropy -= pm[i][j] * np.log(pm[i][j])
     return peakCandidates, entropy
@@ -310,7 +319,7 @@ def ComputePeaks(particles_data, H, W, distTresh=10, nPeaks=2):
     for candidate in peakCandidates:
         peakOK = True
         for peak in peakList:
-            dist = sqrt((candidate[1]-peak[1])**2+(candidate[2]-peak[2])**2)
+            dist = sqrt((candidate[1] - peak[1]) ** 2 + (candidate[2] - peak[2]) ** 2)
             if dist < distTresh:
                 peakOK = False
                 break
@@ -320,18 +329,35 @@ def ComputePeaks(particles_data, H, W, distTresh=10, nPeaks=2):
 
 
 @jit(nopython=True)
-def DL_Scoring(scale, Exit_X_Y, particles, E_Map, r):
+def DL_Scoring(Exit_X_Y, particles, EXITS_ORI, EXITS_TH, E_Map, min_r, max_r, T_Facing):
     particle_index = []
+    exits_index = []
+    cc = 0
     for exits_xy in Exit_X_Y:
-        mydist = np.sqrt(np.power(particles[:, 0:1] - exits_xy[0], 2) + np.power(particles[:, 1:2] - exits_xy[1], 2))
+        RX = particles[:, 0:1] - exits_xy[0]
+        RY = exits_xy[1] - particles[:, 1:2]
+        R_Norms = np.sqrt(np.power(RX, 2) + np.power(RY, 2))
+        CS = np.cos(particles[:, 2])
+        SN = np.sin(particles[:, 2])
         inx = 0
-        #print(r - scale, r + scale)
-        for items in mydist:
-            if r - scale < int(round(items[0])) < r + scale:
-                if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
+        for R_Norm, Rx, Ry, cs, sn in zip(R_Norms, RX, RY, CS, SN):
+            if min_r < int(round(R_Norm[0])) < max_r:
+                Camera_Facing = cs * EXITS_ORI[cc][0] + sn * EXITS_ORI[cc][1]
+                # Camera_Facing = np.dot([cs, sn], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])
+                # Front_Sign = np.dot([Rx[0], Ry[0]], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])/R_Norm
+                Front_Sign = (Rx[0] * EXITS_ORI[cc][0] + Ry[0] * EXITS_ORI[cc][1]) / R_Norm
+                if Front_Sign > EXITS_TH[cc] and Camera_Facing <= T_Facing:
+                    # print(Camera_Facing, Front_Sign, [EXITS_ORI[cc][0], EXITS_ORI[cc][1]], cs, sn)
+                    # if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
                     particle_index.append(inx)
+                    exits_index.append(cc)
             inx = inx + 1
-    return particle_index
+        cc = cc + 1
+    particles_res = []
+    exits_res = []
+    [particles_res.append(x) for x in particle_index if x not in particles_res]
+    [exits_res.append(x) for x in exits_index if x not in exits_res]
+    return particles_res, exits_res
 
 
 @jit(nopython=True)
@@ -356,11 +382,11 @@ def ShowParticles(particles_data, im_particles):
 def ShowPeaks(peakList, im_peak, nPeaks=1, color=(0, 255, 0)):
     for i in range(min(nPeaks, len(peakList))):
         x, y = floor(peakList[i][1]), floor(peakList[i][2])
-        im_peak[x-1, y] = color
+        im_peak[x - 1, y] = color
         im_peak[x, y] = color
-        im_peak[x+1, y] = color
-        im_peak[x, y-1] = color
-        im_peak[x, y+1] = color
+        im_peak[x + 1, y] = color
+        im_peak[x, y - 1] = color
+        im_peak[x, y + 1] = color
 
     return im_peak
 
@@ -370,8 +396,8 @@ def DrawPeaks(peakList, im_peak, nPeaks=1):
     drawpeak = ImageDraw.Draw(imgPeak)
     for i in range(min(nPeaks, len(peakList))):
         x, y = floor(peakList[i][2]), floor(peakList[i][1])
-        drawpeak.line((x, y-1, x, y+1), fill=(0, 255, 0), width=1)
-        drawpeak.line((x-1, y, x+1, y), fill=(0, 255, 0), width=1)
+        drawpeak.line((x, y - 1, x, y + 1), fill=(0, 255, 0), width=1)
+        drawpeak.line((x - 1, y, x + 1, y), fill=(0, 255, 0), width=1)
     return im_peak
 
 
@@ -387,9 +413,10 @@ def FilteringParticles(particles_data, imBinary):
     return xy
 
 
-def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH,
-         loaded_model, names, colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map,
-         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=-1, radseed=542014):
+def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, scale, HEIGHT, WIDTH, loaded_model, names,
+         colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map, starting_location_flag,
+         user_starting_point, sampling_distance, ADDED_ERROR, EXITS_ORI, EXITS_TH, plot_angles, TH_Facing, yaw_flag=-1,
+         radseed=542014):
     # Create particles located on empty spaces
     np.random.seed(radseed)
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
@@ -401,10 +428,12 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
     previous_X = 0
     previous_Z = 0
     h, w, _ = image_original.shape
+    Initializing_Flag = False
     trajectory = []
     # Start to read each image and its ARKIT Logged data
     for CameraLogImage in list_of_cameraLog_images:
         image_particles = image_original.copy()
+        radius_image = image_original.copy()
         old_particles_data = particles_data.copy()
         # Pixels to Meters
         particles_data[:, Z_] = particles_data[:, Z_] / Scale
@@ -416,55 +445,71 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         PITCH = ARKIT_DATA[3]
         YAW = ARKIT_DATA[4]
         ROLL = ARKIT_DATA[5]
-
-        Rot2D_theta = particles_data[:, YAW_] - np.pi/2 - previousYAW
+        if not Initializing_Flag:
+            previous_X = X_ARKIT
+            previous_Z = Z_ARKIT
+            Initializing_Flag = True
+            previousYAW = YAW
+        Rot2D_theta = particles_data[:, YAW_] - np.pi / 2 - previousYAW
         DeltaX = X_ARKIT - previous_X
         DeltaZ = Z_ARKIT - previous_Z
         U = DeltaX * np.cos(Rot2D_theta) + DeltaZ * np.sin(Rot2D_theta)
         V = DeltaX * np.sin(Rot2D_theta) - DeltaZ * np.cos(Rot2D_theta)
 
         # Add -1 to 1 meter error to particles X and Y
-        XY_ERROR = np.random.uniform(low=-2/(4 * Scale), high=2/(4 * Scale), size=(particles_data.shape[0], 2))
+        XY_ERROR = np.random.uniform(low=-2 / (4 * Scale), high=2 / (4 * Scale), size=(particles_data.shape[0], 2))
         # Add -3 to 3 degree error to particles Yaw
         YAW_ERROR = np.radians(np.random.uniform(low=-0.25, high=0.25, size=(particles_data.shape[0], 2)))
+        if ADDED_ERROR is 0:
+            XY_ERROR *= 0
+            YAW_ERROR *= 0
         # Updating X and Y for each hypothesis
-        particles_data[:, 0] = particles_data[:, 0] + U + XY_ERROR[:, 0]
-        particles_data[:, 1] = particles_data[:, 1] + V + XY_ERROR[:, 1]
+        particles_data[:, Z_] = particles_data[:, Z_] + U + XY_ERROR[:, Z_]
+        particles_data[:, X_] = particles_data[:, X_] + V + XY_ERROR[:, X_]
         # Updating Yaw for each hypothesis
-        particles_data[:, 2] = particles_data[:, 2] + YAW_ERROR[:, 0]
+        particles_data[:, YAW_] = particles_data[:, YAW_] + YAW_ERROR[:, Z_]
         # Meters to Pixels
-        particles_data[:, 0] = particles_data[:, 0] * Scale
-        particles_data[:, 1] = h - particles_data[:, 1] * Scale
+        particles_data[:, Z_] = particles_data[:, Z_] * Scale
+        particles_data[:, X_] = h - particles_data[:, X_] * Scale
 
-#        # This step tries to remove particles that go outside of the indoor space
-#        FilteredItems = find_pixels_outside_map(particles_data, HEIGHT, WIDTH)
-#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-#        old_particles_data = np.array([np.delete(old_particles_data, FilteredItems[::-1], 0)])[0]
-#        # This step tries to remove particles that go through walls in indoor space
-#        FilteredItems = find_nearest_barrier(imgP, old_particles_data, particles_data)
-#        particles_data = np.array([np.delete(particles_data, FilteredItems[::-1], 0)])[0]
-#        # Remove particles on walls
-#        particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
         # Remove particles landing outside the space or stepping through a wall
         particles_data = np.delete(particles_data, findInvalidSteps(imBinary, old_particles_data, particles_data), 0)
         particles_data = np.delete(particles_data, FilteringParticles(particles_data, imBinary), 0)
 
         # Update YAW data
-        particles_data[:, 2] = particles_data[:, 2] + (YAW - previousYAW)
+        particles_data[:, YAW_] = particles_data[:, YAW_] + (YAW - previousYAW)
         # Normalize particles probability distribution after deleting particles which go through walls
-        particles_data[:, 3] /= np.sum(particles_data[:, 3])
+        particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
         # Object detection using YOLO
         object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
                                                          names, colors, MLModel_input_size, (0, 0, 0), 3, 9,
                                                          sign_heights, focalLength, PITCH)
-        LOS_Image = Exits_Map.copy()
+
         # Find particles on field of view of Exit signs and update their score to them
+        for cc, ex in enumerate(Exit_X_Y):
+            cv2.ellipse(radius_image, (ex[0], ex[1]), (30, 30),
+                        0, int(round(plot_angles[cc][0])), int(round(plot_angles[cc][1])), (255, 0, 0), 10)
+            cv2.circle(radius_image, center=(ex[0], ex[1]), color=(255, 255, 0), thickness=-1, radius=3)
         if 1 in cls_num:
             radius_to_sign = int(round(scale * dist_to_sign[cls_num.index(1)]))
-            Index_Particles_LOS = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
+            min_radius = int(round(radius_to_sign - 2 * scale))
+            max_radius = int(round(radius_to_sign + 2 * scale))
+            Index_Particles_LOS, closest_exits = DL_Scoring(Exit_X_Y, particles_data, EXITS_ORI, EXITS_TH,
+                                                            Exits_Map[:, :, 0].copy(), min_radius, max_radius,
+                                                            TH_Facing)
+            for ex in closest_exits:
+                cl = (255, 0, 0)
+                if min_radius < 0:
+                    min_radius = 0
+                cv2.ellipse(image_particles, (Exit_X_Y[ex][0], Exit_X_Y[ex][1]), (radius_to_sign, radius_to_sign),
+                            0, int(round(plot_angles[ex][0])), int(round(plot_angles[ex][1])), cl,
+                            int(round(max_radius - min_radius)))
             if len(Index_Particles_LOS) is not 0:
-                LOS_Image, particles_data = updating_detection_scores(Index_Particles_LOS, particles_data, LOS_Image)
-                particles_data = Resampling(particles_data, number_of_particles)
+                # Find particles predicted to see the sign and give higher probability to them
+                particles_data[Index_Particles_LOS, 3] *= 2
+                # Normalize particles probability distribution
+                particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
+            particles_data = Resampling(particles_data, number_of_particles)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
@@ -472,7 +517,8 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         # -----------------------Visualization Segment------------------------
         # Show particles on the map
         image_particles = ShowParticles(particles_data, image_particles.copy())
-
+        for ex in Exit_X_Y:
+            cv2.circle(image_particles, center=(ex[0], ex[1]), color=(255, 255, 0), thickness=-1, radius=3)
         # Find peaks
         peakList, entropy = ComputePeaks(particles_data, HEIGHT, WIDTH, distTresh=12, nPeaks=30)
         if len(peakList) < 1:
@@ -489,8 +535,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         image_heatmap = ShowPeaks(peakList, image_heatmap, 1, (0, 0, 255))
 
         # Concatenate maps for visualization
-        Left_Col = np.concatenate((np.concatenate((LOS_Image, image_particles), axis=0),
-                                   image_heatmap), axis=0)
+        Left_Col = np.concatenate((np.concatenate((image_particles, radius_image), axis=0), image_heatmap), axis=0)
         dims = (max(Left_Col.shape), max(Left_Col.shape))
         Right_Col = cv2.resize(object_detection, dims)
         output = np.hstack((Left_Col, Right_Col))
@@ -504,6 +549,7 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
         plt.pause(0.000001)
     return trajectory
 
+
 img = []
 while_flag = True
 # Change the flag to change modes between known or unknown starting location
@@ -512,6 +558,21 @@ initiated_flag = True
 control_flag = False
 # This section tries to assign starting location of the user
 user_initial_location = (94, 47)
+fields = ['Floor Number', 'Number of particles', 'Frame Number', 'Initial YAW as S, N, ...', 'Adding Error (0 or 1)',
+          "Scale", "Sampling Distance ", "Exit Front Th", "Exit Facing Th", "Number of Trials"]
+
+
+def makeform(root, fields):
+    entries = []
+    for field in fields:
+        row = tk.Frame(root)
+        lab = tk.Label(row, width=15, text=field, anchor='w')
+        ent = tk.Entry(row)
+        row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        lab.pack(side=tk.LEFT)
+        ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
+        entries.append((field, ent))
+    return entries
 
 
 # define the events for the mouse_click.
@@ -549,7 +610,39 @@ def mouse_click(event, x, y, flags, param):
 
 
 if __name__ == "__main__":
-    flr = 4
+    root = tk.Tk()
+    entries = makeform(root, fields)
+    b2 = tk.Button(root, text='Start', command=root.quit)
+    b2.pack(side=tk.LEFT, padx=5, pady=5)
+    root.mainloop()
+    FocalLengths = [1602]
+    model_input_size = 416
+    randseed = 542014
+    initial_user_data = [2, 50000, 0, -1, 1, 11.23, 2, 0.1, 0.1, 1]
+    Directions = {"E": 0, "N": np.pi / 2, "W": np.pi, "S": 3 * (np.pi / 2)}
+    for count, entry in enumerate(entries):
+        field = entry[0]
+        text = entry[1].get()
+        print('%s: "%s"' % (field, text))
+        if len(text) > 0:
+            if count is 3:
+                initial_user_data[count] = Directions[text]
+            else:
+                initial_user_data[count] = float(text)
+
+    flr = int(round(initial_user_data[0]))
+    # Number of particles
+    NumberOfParticles = int(round(initial_user_data[1]))
+    FRAME_TO_START = int(round(initial_user_data[2]))
+    PARTICLES_YAW = initial_user_data[3]
+    Additional_Error = int(round(initial_user_data[4]))
+    Scale = initial_user_data[5]
+    # Sample distance define how far from a selected starting point we need to do sampling
+    sample_distance = int(round(initial_user_data[6]))
+    TH_Front = initial_user_data[7]
+    TH_Facing = initial_user_data[8]
+    # test harness loop
+    ntrials = initial_user_data[9]
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
@@ -567,14 +660,29 @@ if __name__ == "__main__":
     # Six Feet Height: 11 I -> 0.2794 M        ----  FaceMask Width: 8.5 I ->  0.2159M
     # James Height:    11 I -> 0.2794 M        ----  James Width:    8.5 I ->  0.2159M
     Heights = [0.2794, 0.19685, 0.2794, 0.2794, 0.2794, 0.1143, 0.29845, 0.2794]  # Heights of signs in meters
-    EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
+    # EXITS_X_Y = [(321, 50), (395, 86), (394, 158), (293, 159), (279, 177), (71, 177), (73, 52), (100, 48)]  # 4th Flr
     # EXITS_X_Y = [(99, 44), (72, 51), (71, 190), (270, 174), (421, 188), (421, 49)]  # 3th Flr
-    # EXITS_X_Y = [(335, 57), (415, 51), (415, 178), (362, 175), (314, 164), (100, 47)]  # 2th Flr
+
+    # 2th Flr
+    EXITS_X_Y = [(100, 47), (335, 57), (335, 57), (415, 51), (415, 178), (362, 175), (362, 175), (314, 164), (314, 164)]
+    EXITS_DIR = [(1, 0), (1, 0), (-1, 0), (0, -1), (0, 1), (1, 0), (-1, 0), (0, -1), (0, 1)]
+    EXITS_TH = [TH_Front] * len(EXITS_X_Y)
+    plot_angles = []
+    for items_dir, items_th in zip(EXITS_DIR, EXITS_TH):
+        angle_to_cover = 180 - 180 * items_th
+        if items_dir is (1, 0):
+            starting_angle = 270 + 90 * items_th
+            plot_angles.append((starting_angle, starting_angle + angle_to_cover))
+        elif items_dir is (-1, 0):
+            starting_angle = 90 + 90 * items_th
+            plot_angles.append((starting_angle, starting_angle + angle_to_cover))
+        elif items_dir is (0, -1):
+            starting_angle = 0 + 90 * items_th
+            plot_angles.append((starting_angle, starting_angle + angle_to_cover))
+        elif items_dir is (0, 1):
+            starting_angle = 180 + 90 * items_th
+            plot_angles.append((starting_angle, starting_angle + angle_to_cover))
     EXITS_MAP = cv2.bitwise_not(cv2.imread('../LOS_Maps/exits_' + str(flr) + '.bmp'))
-    FocalLengths = [1602]
-    model_input_size = 416
-    NumberOfParticles = 10000
-    # Number of particles
     # Read Image
     imgOriginal = cv2.imread(path_to_map, 1)
     img = imgOriginal.copy()
@@ -585,10 +693,6 @@ if __name__ == "__main__":
         cv2.waitKey(2)
 
     cv2.destroyWindow('image')
-    # Sample distance define how far from a selected starting point we need to do sampling
-    sample_distance = 2
-    Scale = 12
-    randseed = 542014
     loadedModel = coremltools.models.MLModel('../DeepLearning/TrainedModels/' + model_name)
     _, imgOriginal = cv2.threshold(imgOriginal, 64, 255, cv2.THRESH_BINARY)
     image_binary = imgOriginal.copy()[:, :, 0]
@@ -601,28 +705,28 @@ if __name__ == "__main__":
     ListOfCameraLogImages = [int(file.split('/')[len(file.split('/')) - 1].replace(IMAGE_EXTENSION, ''))
                              for file in glob.glob(PATH + "*" + IMAGE_EXTENSION)]
     ListOfCameraLogImages.sort()
-
+    if FRAME_TO_START > 1:
+        ListOfCameraLogImages = ListOfCameraLogImages[FRAME_TO_START - 1:]
     # Build Ground Truth
-    gt = main(imgOriginal, imageP, 10000, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
-         loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
-         initiated_flag, user_initial_location, sample_distance, 0, randseed)
+    gt = main(imgOriginal, imageP, 10000, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH, loadedModel, class_names,
+              class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP, initiated_flag,
+              user_initial_location, sample_distance, Additional_Error, EXITS_DIR, EXITS_TH, plot_angles, TH_Facing,
+              PARTICLES_YAW, randseed)
 
-    # test harness loop
-    ntrials = 1
-    yawflag = -1
-    trajectoryDistThresh = 1 # meters away from ground truth peaks must be to count correct
+    trajectoryDistThresh = 1  # meters away from ground truth peaks must be to count correct
     convergetime = []
     np.random.seed(randseed)
     randseeds = (np.random.randint(low=1, high=1000000, size=ntrials))
     for trial in range(ntrials):
         peakpath = main(imgOriginal, imageP, NumberOfParticles, ListOfCameraLogImages, Scale, Im_HEIGHT, Im_WIDTH,
                         loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y,
-                        EXITS_MAP, False, user_initial_location, sample_distance, yawflag, randseeds[trial])
+                        EXITS_MAP, False, user_initial_location, sample_distance, Additional_Error, EXITS_DIR, EXITS_TH,
+                        plot_angles, TH_Facing, PARTICLES_YAW, randseeds[trial])
         for step in reversed(range(len(peakpath))):
-            dist = sqrt((gt[step][0]-peakpath[step][0])**2 + (gt[step][1]-peakpath[step][1])**2)
-            if dist > Scale*trajectoryDistThresh:
+            dist = sqrt((gt[step][0] - peakpath[step][0]) ** 2 + (gt[step][1] - peakpath[step][1]) ** 2)
+            if dist > Scale * trajectoryDistThresh:
                 convergetime.append(step)
                 break
-    meanconv = sum(convergetime)/len(convergetime)
+    meanconv = sum(convergetime) / len(convergetime)
     print(f"Over {ntrials} trials, the average time for peak to converge correctly is {meanconv}.\n")
     print(f"It converged {len(convergetime)} times out of {ntrials} trials.\n")
