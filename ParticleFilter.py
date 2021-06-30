@@ -394,7 +394,7 @@ def FilteringParticles(particles_data, imBinary):
 
 def main(image_original, imgP, number_of_particles, PATH, list_of_cameraLog_images, ARKIT_LOGGED, scale, HEIGHT, WIDTH,
          loaded_model, names, colors, MLModel_input_size, sign_heights, focalLength, Exit_X_Y, Exits_Map,
-         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=None, randseed=542014):
+         starting_location_flag, user_starting_point, sampling_distance, yaw_flag=None, randseed=542014, yolo_flag=True):
     # Create particles located on empty spaces
     np.random.seed(randseed)
     particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
@@ -451,17 +451,25 @@ def main(image_original, imgP, number_of_particles, PATH, list_of_cameraLog_imag
         # Normalize particles probability distribution after deleting particles which go through walls
         particles_data[:, 3] /= np.sum(particles_data[:, 3])
         # Object detection using YOLO
-        object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
-                                                         names, colors, MLModel_input_size, (0, 0, 0), 3, 9,
-                                                         sign_heights, focalLength, PITCH)
         LOS_Image = Exits_Map.copy()
-        # Find particles on field of view of Exit signs and update their score to them
-        if 1 in cls_num:
-            radius_to_sign = int(round(scale * dist_to_sign[cls_num.index(1)]))
-            Index_Particles_LOS = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
-            if len(Index_Particles_LOS) is not 0:
-                LOS_Image, particles_data = updating_detection_scores(Index_Particles_LOS, particles_data, LOS_Image)
-                particles_data = Resampling(particles_data, number_of_particles)
+        if yolo_flag:
+            object_detection, dist_to_sign, cls_num = YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL,
+                                                             names, colors, MLModel_input_size, (0, 0, 0), 3, 9,
+                                                             sign_heights, focalLength, PITCH)
+            if 1 in cls_num:
+                radius_to_sign = int(round(scale * dist_to_sign[cls_num.index(1)]))
+                Index_Particles_LOS = DL_Scoring(scale, Exit_X_Y, particles_data, Exits_Map[:, :, 0].copy(), radius_to_sign)
+                if len(Index_Particles_LOS) is not 0:
+                    LOS_Image, particles_data = updating_detection_scores(Index_Particles_LOS, particles_data, LOS_Image)
+        else:
+            object_detection = cv2.imread(PATH + str(CameraLogImage) + IMAGE_EXTENSION)
+        # if after removing invalid particles and applying sign detection there are no particles, all new
+        if len(particles_data) is not 0:
+            particles_data = Resampling(particles_data, number_of_particles)
+        else:
+            particles_data = generate_uniform_particles_data(number_of_particles, image_original, user_starting_point,
+                                                             floor(sampling_distance * scale), starting_location_flag,
+                                                             yaw_flag)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
@@ -601,4 +609,4 @@ if __name__ == "__main__":
     ListOfCameraLogImages.sort()
     _ = main(imgOriginal, imageP, NumberOfParticles, PATH, ListOfCameraLogImages, ARKITLOG, Scale, Im_HEIGHT, Im_WIDTH,
              loadedModel, class_names, class_colors, model_input_size, Heights, FocalLengths, EXITS_X_Y, EXITS_MAP,
-             initiated_flag, user_initial_location, sample_distance, -1, randseed)
+             initiated_flag, user_initial_location, sample_distance, -1, randseed, True)
