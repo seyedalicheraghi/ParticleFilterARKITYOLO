@@ -342,7 +342,7 @@ def DL_Scoring(Exit_X_Y, particles, EXITS_ORI, EXITS_TH, E_Map, min_r, max_r, T_
         inx = 0
         for R_Norm, Rx, Ry, cs, sn in zip(R_Norms, RX, RY, CS, SN):
             if min_r < int(round(R_Norm[0])) < max_r:
-                Camera_Facing = cs * EXITS_ORI[cc][0] + sn * EXITS_ORI[cc][1]
+                Camera_Facing = (cs * -Rx[0] + sn * -Ry[0]) / R_Norm
                 # Camera_Facing = np.dot([cs, sn], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])
                 # Front_Sign = np.dot([Rx[0], Ry[0]], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])/R_Norm
                 Front_Sign = (Rx[0] * EXITS_ORI[cc][0] + Ry[0] * EXITS_ORI[cc][1]) / R_Norm
@@ -376,6 +376,14 @@ def updating_detection_scores(Particles_in_LOS_Index, p_data, IMAGE_LOS):
 def ShowParticles(particles_data, im_particles):
     for particle in particles_data:
         im_particles[int(round(particle[1])), int(round(particle[0]))] = (0, 0, 255)
+    return im_particles
+
+
+def ShowParticlesYaw(particles_data, im_particles):
+    cmap = cv2.applyColorMap(np.array(range(256), np.uint8), cv2.COLORMAP_HSV)
+    for particle in particles_data:
+        color = cmap[round(particle[YAW_]*128/np.pi) % 256][0]
+        im_particles[int(round(particle[1])), int(round(particle[0]))] = color
     return im_particles
 
 
@@ -509,14 +517,19 @@ def main(image_original, imgP, number_of_particles, list_of_cameraLog_images, sc
                 particles_data[Index_Particles_LOS, 3] *= 2
                 # Normalize particles probability distribution
                 particles_data[:, SCORE_] /= np.sum(particles_data[:, SCORE_])
-            particles_data = Resampling(particles_data, number_of_particles)
+            if len(particles_data) is not 0:
+                particles_data = Resampling(particles_data, number_of_particles)
+            else:
+                particles_data = generate_uniform_particles_data(number_of_particles, image_original,
+                                                                 user_starting_point, floor(sampling_distance * scale),
+                                                                 starting_location_flag, yaw_flag)
         # -----------------------Updating Parameters--------------------------
         previousYAW = YAW
         previous_X = X_ARKIT
         previous_Z = Z_ARKIT
         # -----------------------Visualization Segment------------------------
         # Show particles on the map
-        image_particles = ShowParticles(particles_data, image_particles.copy())
+        image_particles = ShowParticlesYaw(particles_data, image_particles.copy())
         for ex in Exit_X_Y:
             cv2.circle(image_particles, center=(ex[0], ex[1]), color=(255, 255, 0), thickness=-1, radius=3)
         # Find peaks
@@ -559,7 +572,7 @@ control_flag = False
 # This section tries to assign starting location of the user
 user_initial_location = (94, 47)
 fields = ['Floor Number', 'Number of particles', 'Frame Number', 'Initial YAW as S, N, ...', 'Adding Error (0 or 1)',
-          "Scale", "Sampling Distance ", "Exit Front Th", "Exit Facing Th", "Number of Trials"]
+          "Scale", "Sampling Distance ", "Exit Front Th", "Exit Facing Th", "Number of Trials", "Model name"]
 
 
 def makeform(root, fields):
@@ -618,7 +631,7 @@ if __name__ == "__main__":
     FocalLengths = [1602]
     model_input_size = 416
     randseed = 542014
-    initial_user_data = [2, 50000, 0, -1, 1, 11.23, 2, 0.1, 0.1, 1]
+    initial_user_data = [4, 50000, 0, -1, 1, 11.23, 2, 0.1, 0.1, 1, '8NMMY2NC15k']
     Directions = {"E": 0, "N": np.pi / 2, "W": np.pi, "S": 3 * (np.pi / 2)}
     for count, entry in enumerate(entries):
         field = entry[0]
@@ -627,6 +640,8 @@ if __name__ == "__main__":
         if len(text) > 0:
             if count is 3:
                 initial_user_data[count] = Directions[text]
+            elif count is 10:
+                initial_user_data[count] = text
             else:
                 initial_user_data[count] = float(text)
 
@@ -643,10 +658,10 @@ if __name__ == "__main__":
     TH_Facing = initial_user_data[8]
     # test harness loop
     ntrials = initial_user_data[9]
+    model_name = initial_user_data[10] + '.mlmodel'
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
     path_to_map = '../maps/walls_' + str(flr) + '.bmp'
-    model_name = '8NMMY2NC15k.mlmodel'
     class_names = ['Safety', 'Exit', 'FaceMask', 'James', 'Caution', 'RedFire', 'Restroom', 'SixFt']
     class_colors = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
                     (192, 192, 192), (192, 0, 0), (0, 192, 0), (0, 0, 192)]
