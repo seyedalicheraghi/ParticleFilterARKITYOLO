@@ -73,18 +73,23 @@ def YOLOV2(loaded_model, PATH, CameraLogImage, IMAGE_EXTENSION, ROLL, names, col
         font = ImageFont.truetype('./FreeMono.ttf', 40)
         draw = ImageDraw.Draw(open_cv_image)
         class_idx = int(np.argmax(pred.get('confidence')[ix]))
-        draw.text((xc, yc), str(ix), TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
-        draw.text((textOnScreenX * 5, textOnScreenY),
-                  'Conf: ' + str(pred.get('confidence')[ix][class_idx]),
+        if class_idx is 1 and pred.get('confidence')[ix][class_idx] > 0.6:
+            draw.text((xc, yc), str(ix), TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
+            # draw.text((textOnScreenX * 5, textOnScreenY),
+            #           'Conf: ' + str(pred.get('confidence')[ix][class_idx]),
+            #           TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
+
+            draw.text((textOnScreenX, textOnScreenY), str(ix) + ':  ' + names[class_idx],
                   TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
-        draw.text((textOnScreenX, textOnScreenY), str(ix) + ':  ' + names[class_idx],
-                  TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
-        draw.line(points, fill=colors[class_idx], width=LineWidth)
-        textOnScreenY += 60
-        # Distance Estimation
-        dist_to_sign.append(distance_measuring_new(int(y + h), pitch, heights[int(class_idx)],
-                                                   Focal_lengths[0], imsz, y, xc))
-        class_numbers.append(class_idx)
+            draw.line(points, fill=colors[class_idx], width=LineWidth)
+            # textOnScreenY += 60
+            # Distance Estimation
+            dis = distance_measuring_new(int(y + h), pitch, heights[int(class_idx)], Focal_lengths[0], imsz, y, xc)
+            dist_to_sign.append(dis)
+            draw.text((textOnScreenX * 5, textOnScreenY), 'Dist: ' + str(dis),
+                      TextColorOnOutputImages, font=font, stroke_width=strokeTextWidth)
+            class_numbers.append(class_idx)
+            # print(dis, pred.get('confidence')[ix][class_idx])
     open_cv_image = np.array(open_cv_image)
     open_cv_image = open_cv_image[:, :, ::-1].copy()
     return open_cv_image, dist_to_sign, class_numbers
@@ -346,7 +351,7 @@ def DL_Scoring(Exit_X_Y, particles, EXITS_ORI, EXITS_TH, E_Map, min_r, max_r, T_
                 # Camera_Facing = np.dot([cs, sn], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])
                 # Front_Sign = np.dot([Rx[0], Ry[0]], [EXITS_ORI[cc][0], EXITS_ORI[cc][1]])/R_Norm
                 Front_Sign = (Rx[0] * EXITS_ORI[cc][0] + Ry[0] * EXITS_ORI[cc][1]) / R_Norm
-                if Front_Sign > EXITS_TH[cc] and Camera_Facing <= T_Facing:
+                if Front_Sign > EXITS_TH[cc] and Camera_Facing >= T_Facing:
                     # print(Camera_Facing, Front_Sign, [EXITS_ORI[cc][0], EXITS_ORI[cc][1]], cs, sn)
                     # if E_Map[int(round(particles[inx, 1:2][0])), int(round(particles[inx, 0:1][0]))] == 0:
                     particle_index.append(inx)
@@ -657,7 +662,7 @@ if __name__ == "__main__":
     TH_Front = initial_user_data[7]
     TH_Facing = initial_user_data[8]
     # test harness loop
-    ntrials = initial_user_data[9]
+    ntrials =  int(initial_user_data[9])
     model_name = initial_user_data[10] + '.mlmodel'
     PATH = "../LoggedData/trial" + str(flr) + "/"
     IMAGE_EXTENSION = '.jpg'
